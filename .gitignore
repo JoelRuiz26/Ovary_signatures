@@ -1,0 +1,70 @@
+# Ignore everything by default
+*
+
+# Allow Git to descend into subdirectories
+!*/
+
+# Track only specific files in any directory
+!.gitignore
+!README*
+!*.R
+
+# (Optional) Allow bash and markdown scripts
+!*.sh
+#!*.md
+!*.png
+!*.pdf
+# (Optional) Allow specific folders
+#!docs/
+#!config/
+
+# Explicitly ignore common data/bioinformatics file types
+*.RData
+*.rds
+*.tsv
+*.csv
+*.xlsx
+*.xls
+*.txt
+*.zip
+*.gz
+*.tar
+*.h5
+*.hdf5
+*.bam
+*.fastq
+*.fq
+*.sam
+*.vcf
+*.pdf
+*.png
+*.jpg
+*.jpeg
+*.tiff
+*.bed
+*.bw
+*.bigwig
+*.gtf
+*.gff
+*.json
+*.log
+*.out
+*.err
+*.bak
+*.sif
+*.sort
+*.css
+*.map
+*.js
+*.scss
+*.txt
+.DS_Store
+
+# Ignore common temporary or metadata folders
+.Rproj.user/
+__pycache__/
+cache/
+tmp/
+temp/
+
+ARACNE-multicore/
