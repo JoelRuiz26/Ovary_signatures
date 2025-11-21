@@ -179,58 +179,96 @@ cat("Done. Signatures saved ALL and signific per method for OVARY\n")
 ###############################################
 ### Meta-signature
 ###############################################
+###############################################
+### Meta-signature
+###############################################
+
+# 1) Función para p-valor combinado tipo rOP (Song & Tseng, 2014)
+#    K = 3 métodos (edgeR, DESeq2, limma), r = 3 (TODOS los métodos)
+combine_p_rOP3 <- function(p1, p2, p3, r = 3L) {
+  pvec  <- sort(c(p1, p2, p3))
+  t_obs <- pvec[r]
+  # Bajo H0, el r-ésimo p-valor ordenado ~ Beta(r, K - r + 1)
+  pbeta(t_obs, shape1 = r, shape2 = 3 - r + 1, lower.tail = TRUE)
+}
+
+# 2) Cargar resultados ALL de cada método
 edge   <- readRDS(file.path(DIR_OUT_RDS, "DE_OVARY_ALL_EdgeR.rds"))
 deseq2 <- readRDS(file.path(DIR_OUT_RDS, "DE_OVARY_ALL_DESeq2.rds"))
 limma  <- readRDS(file.path(DIR_OUT_RDS, "DE_OVARY_ALL_limma.rds"))
 
+# 3) Armar tabla meta con logFC promedio, Fisher y rOP (r = 3)
 meta_all <- edge %>%
   dplyr::select(Symbol,
-                log2FC_edgeR  = log2FoldChange,
-                padj_edgeR    = padj) %>%
+                log2FC_edgeR = log2FoldChange,
+                padj_edgeR   = padj) %>%
   dplyr::inner_join(
-    deseq2 %>% dplyr::select(Symbol,
-                             log2FC_DESeq2 = log2FoldChange,
-                             padj_DESeq2   = padj),
+    deseq2 %>%
+      dplyr::select(Symbol,
+                    log2FC_DESeq2 = log2FoldChange,
+                    padj_DESeq2   = padj),
     by = "Symbol"
   ) %>%
   dplyr::inner_join(
-    limma %>% dplyr::select(Symbol,
-                            log2FC_limma  = log2FoldChange,
-                            padj_limma    = padj),
+    limma %>%
+      dplyr::select(Symbol,
+                    log2FC_limma = log2FoldChange,
+                    padj_limma   = padj),
     by = "Symbol"
   ) %>%
   dplyr::mutate(
-    log2FC_mean   = (log2FC_edgeR + log2FC_DESeq2 + log2FC_limma)/3,
-    fisher_stat   = -2*(log(padj_edgeR) + log(padj_DESeq2) + log(padj_limma)),
-    pvalue_fisher = pchisq(fisher_stat, df = 6, lower.tail = FALSE),
-    padj_fisher   = p.adjust(pvalue_fisher, method = "BH"),
-    regulation    = dplyr::if_else(log2FC_mean > 0, "up", "down")
+    # logFC consenso (promedio simple)
+    log2FC_mean = (log2FC_edgeR + log2FC_DESeq2 + log2FC_limma) / 3,
+    
+    # Fisher clásico (lo dejamos solo como referencia)
+    fisher_stat   = -2 * (log(padj_edgeR) + log(padj_DESeq2) + log(padj_limma)),
+    pvalue_fisher = pchisq(fisher_stat, df = 2 * 3, lower.tail = FALSE),
+    padj_fisher   = p.adjust(pvalue_fisher, method = "BH")
+  ) %>%
+  # 4) p-valor combinado tipo rOP con r = 3 (todos los métodos)
+  dplyr::rowwise() %>%
+  dplyr::mutate(
+    p_rOP = combine_p_rOP3(padj_edgeR, padj_DESeq2, padj_limma, r = 3L)
+  ) %>%
+  dplyr::ungroup() %>%
+  dplyr::mutate(
+    padj_rOP   = p.adjust(p_rOP, method = "BH"),
+    regulation = dplyr::if_else(log2FC_mean > 0, "up", "down")
   ) %>%
   dplyr::select(
     Symbol,
+    # Esta es tu firma consenso:
     log2FoldChange = log2FC_mean,
     regulation,
-    padj = padj_fisher,
-    log2FC_edgeR, padj_edgeR,
+    padj = padj_rOP,        # p-ajustado combinado (rOP, r = 3)
+    
+    # Guardamos todo lo demás por transparencia:
+    padj_rOP,
+    p_rOP,
+    log2FC_edgeR,  padj_edgeR,
     log2FC_DESeq2, padj_DESeq2,
-    log2FC_limma, padj_limma,
+    log2FC_limma,  padj_limma,
     fisher_stat, pvalue_fisher, padj_fisher
   )
 
+# 5) Guardar meta-firma ALL
 saveRDS(meta_all, file.path(DIR_OUT_RDS, "Meta_DE_OVARY_ALL_auto.rds"))
 
+# 6) Meta-firma significativa exigiendo:
+#    - Mismo signo en los 3 métodos
+#    - padj_rOP <= 0.01
+#    - |log2FC_mean| >= 1
 meta_sig <- meta_all %>%
   dplyr::filter(
-    sign(log2FC_edgeR) == sign(log2FC_DESeq2),
-    sign(log2FC_edgeR) == sign(log2FC_limma),
-    padj <= 0.01,
+    sign(log2FC_edgeR)  == sign(log2FC_DESeq2),
+    sign(log2FC_edgeR)  == sign(log2FC_limma),
+    padj                <= 0.01,
     abs(log2FoldChange) >= 1
   )
 
 saveRDS(meta_sig, file.path(DIR_OUT_RDS, "Meta_DE_OVARY_significant_auto.rds"))
 
 save.image("/STORAGE/csbig/jruiz/Ovary_data/Image_DiseaseSignature_OVARY_auto.RData")
-
 
 
 #computing DE via edgeR
