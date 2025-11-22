@@ -2,8 +2,8 @@ library(ggplot2)
 library(dplyr)
 
 # ---- Paths ----
-meta_file <- "~/Ovary_signatures/1_DGE_signature_auto/1_1_Output_rds/Meta_DE_OVARY_ALL_auto.rds"
-out_png   <- "~/Ovary_signatures/1_DGE_signature_auto/1_1_Output_rds/Volcano_Meta_OVARY_auto.png"
+meta_file <- "~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/Meta_DE_OVARY_significant_HMP.rds"
+out_png   <- "~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/Volcano_Meta_OVARY_all.png"
 
 # Umbrales
 lfc_thr  <- 1

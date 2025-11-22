@@ -61,7 +61,7 @@ controls_all <- computeRefTissue(
   case_id      = case_ovary,
   control_size = 88,        # TOP 88 controles
   source       = "octad",   # usa autoencoder
-  adjacent     = FALSE,     # normales (no sólo 'adjacent')
+  adjacent     = TRUE,     # FALSE for only GTEX
   output       = FALSE      # no escribir archivos CSV
 )
 

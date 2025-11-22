@@ -61,7 +61,7 @@ controls_all <- computeRefTissue(
   case_id      = case_ovary,
   control_size = 88,        # TOP 88 controles
   source       = "octad",   # usa autoencoder
-  adjacent     = FALSE,     # normales (no sólo 'adjacent')
+  adjacent     = TRUE,     # False for only GTEX
   output       = FALSE      # no escribir archivos CSV
 )
 
@@ -87,6 +87,7 @@ metadata <- phenoDF %>%
 saveRDS(metadata, file.path(DIR_OUT_RDS, "1_1_metadata_auto.rds"))
 table(metadata$subtype)
 
+
 ###############################################
 # DGE with 3 methods (solo OVARY)
 ###############################################
@@ -104,6 +105,7 @@ pick_symbol_col <- function(df){
   NA_character_
 }
 
+### CAMBIO 1: conservar también pvalue crudo en las firmas
 make_signature_all <- function(res_df){
   sym_col <- pick_symbol_col(res_df)
   df <- if (!is.na(sym_col)) {
@@ -112,13 +114,18 @@ make_signature_all <- function(res_df){
     res_df %>% dplyr::mutate(Symbol = .data[[pick_id_col(res_df)]])
   }
   df %>%
-    dplyr::filter(!is.na(log2FoldChange), !is.na(padj)) %>%
+    dplyr::filter(
+      !is.na(log2FoldChange),
+      !is.na(pvalue),
+      !is.na(padj)
+    ) %>%
     dplyr::distinct(Symbol, .keep_all = TRUE) %>%
     dplyr::transmute(
       Symbol,
       log2FoldChange,
       regulation = dplyr::if_else(log2FoldChange > 0, "up", "down"),
-      padj
+      pvalue,              # p crudo
+      padj                 # p ajustado del método
     )
 }
 
@@ -179,11 +186,8 @@ cat("Done. Signatures saved ALL and signific per method for OVARY\n")
 ###############################################
 ### Meta-signature
 ###############################################
-###############################################
-### Meta-signature
-###############################################
 
-# 1) Función para p-valor combinado tipo rOP (Song & Tseng, 2014)
+# Función para p-valor combinado tipo rOP (Song & Tseng, 2014)
 #    K = 3 métodos (edgeR, DESeq2, limma), r = 3 (TODOS los métodos)
 combine_p_rOP3 <- function(p1, p2, p3, r = 3L) {
   pvec  <- sort(c(p1, p2, p3))
@@ -192,70 +196,79 @@ combine_p_rOP3 <- function(p1, p2, p3, r = 3L) {
   pbeta(t_obs, shape1 = r, shape2 = 3 - r + 1, lower.tail = TRUE)
 }
 
-# 2) Cargar resultados ALL de cada método
+# Cargar resultados ALL de cada método
 edge   <- readRDS(file.path(DIR_OUT_RDS, "DE_OVARY_ALL_EdgeR.rds"))
 deseq2 <- readRDS(file.path(DIR_OUT_RDS, "DE_OVARY_ALL_DESeq2.rds"))
 limma  <- readRDS(file.path(DIR_OUT_RDS, "DE_OVARY_ALL_limma.rds"))
 
-# 3) Armar tabla meta con logFC promedio, Fisher y rOP (r = 3)
+### CAMBIO 3: usar p crudos de cada método (pvalue_*), ajustar sólo al final
+
 meta_all <- edge %>%
-  dplyr::select(Symbol,
-                log2FC_edgeR = log2FoldChange,
-                padj_edgeR   = padj) %>%
+  dplyr::select(
+    Symbol,
+    log2FC_edgeR = log2FoldChange,
+    p_edgeR      = pvalue,
+    padj_edgeR   = padj
+  ) %>%
   dplyr::inner_join(
     deseq2 %>%
-      dplyr::select(Symbol,
-                    log2FC_DESeq2 = log2FoldChange,
-                    padj_DESeq2   = padj),
+      dplyr::select(
+        Symbol,
+        log2FC_DESeq2 = log2FoldChange,
+        p_DESeq2      = pvalue,
+        padj_DESeq2   = padj
+      ),
     by = "Symbol"
   ) %>%
   dplyr::inner_join(
     limma %>%
-      dplyr::select(Symbol,
-                    log2FC_limma = log2FoldChange,
-                    padj_limma   = padj),
+      dplyr::select(
+        Symbol,
+        log2FC_limma = log2FoldChange,
+        p_limma      = pvalue,
+        padj_limma   = padj
+      ),
     by = "Symbol"
   ) %>%
   dplyr::mutate(
     # logFC consenso (promedio simple)
     log2FC_mean = (log2FC_edgeR + log2FC_DESeq2 + log2FC_limma) / 3,
     
-    # Fisher clásico (lo dejamos solo como referencia)
-    fisher_stat   = -2 * (log(padj_edgeR) + log(padj_DESeq2) + log(padj_limma)),
-    pvalue_fisher = pchisq(fisher_stat, df = 2 * 3, lower.tail = FALSE),
-    padj_fisher   = p.adjust(pvalue_fisher, method = "BH")
+    # Fisher a partir de p crudos, no de padj
+    fisher_stat   = -2 * (log(p_edgeR) + log(p_DESeq2) + log(p_limma)),
+    pvalue_fisher = pchisq(fisher_stat, df = 2 * 3, lower.tail = FALSE)
   ) %>%
-  # 4) p-valor combinado tipo rOP con r = 3 (todos los métodos)
+  # rOP con p crudos
   dplyr::rowwise() %>%
   dplyr::mutate(
-    p_rOP = combine_p_rOP3(padj_edgeR, padj_DESeq2, padj_limma, r = 3L)
+    p_rOP = combine_p_rOP3(p_edgeR, p_DESeq2, p_limma, r = 3L)
   ) %>%
   dplyr::ungroup() %>%
   dplyr::mutate(
-    padj_rOP   = p.adjust(p_rOP, method = "BH"),
-    regulation = dplyr::if_else(log2FC_mean > 0, "up", "down")
+    padj_fisher = p.adjust(pvalue_fisher, method = "BH"),
+    padj_rOP    = p.adjust(p_rOP,        method = "BH"),
+    regulation  = dplyr::if_else(log2FC_mean > 0, "up", "down")
   ) %>%
   dplyr::select(
     Symbol,
-    # Esta es tu firma consenso:
+    # Firma consenso principal:
     log2FoldChange = log2FC_mean,
     regulation,
-    padj = padj_rOP,        # p-ajustado combinado (rOP, r = 3)
+    padj = padj_rOP,        # FDR combinado vía rOP
     
-    # Guardamos todo lo demás por transparencia:
-    padj_rOP,
-    p_rOP,
-    log2FC_edgeR,  padj_edgeR,
-    log2FC_DESeq2, padj_DESeq2,
-    log2FC_limma,  padj_limma,
-    fisher_stat, pvalue_fisher, padj_fisher
+    # Guardamos todo para inspección:
+    p_rOP, padj_rOP,
+    pvalue_fisher, padj_fisher,
+    log2FC_edgeR,  p_edgeR,  padj_edgeR,
+    log2FC_DESeq2, p_DESeq2, padj_DESeq2,
+    log2FC_limma,  p_limma,  padj_limma
   )
 
-# 5) Guardar meta-firma ALL
+# Guardar meta-firma ALL
 saveRDS(meta_all, file.path(DIR_OUT_RDS, "Meta_DE_OVARY_ALL_auto.rds"))
 
-# 6) Meta-firma significativa exigiendo:
-#    - Mismo signo en los 3 métodos
+# Meta-firma significativa exigiendo:
+#    - mismo signo en los 3 métodos
 #    - padj_rOP <= 0.01
 #    - |log2FC_mean| >= 1
 meta_sig <- meta_all %>%
@@ -269,7 +282,6 @@ meta_sig <- meta_all %>%
 saveRDS(meta_sig, file.path(DIR_OUT_RDS, "Meta_DE_OVARY_significant_auto.rds"))
 
 save.image("/STORAGE/csbig/jruiz/Ovary_data/Image_DiseaseSignature_OVARY_auto.RData")
-
 
 #computing DE via edgeR
 #loading whole octad expression data for514samples 
@@ -296,4 +308,3 @@ save.image("/STORAGE/csbig/jruiz/Ovary_data/Image_DiseaseSignature_OVARY_auto.RD
 #https://doi.org/10.1214/13-AOAS683
 
 #DOI: 10.7717/peerj.8206
-
