@@ -32,7 +32,7 @@ if (STOP_IF_MISSING_H5) {
   stopifnot(file.exists(H5_PATH))
 }
 
-OUT_DIR <- file.path(DIR_BASE, "3_1_Output_fixed_rds/")
+OUT_DIR <- file.path(DIR_BASE, "3_1_Output_fixed_adjacent_rds/")
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 
 setwd(DIR_BASE)
@@ -328,6 +328,7 @@ pdf(file.path(OUT_DIR, "UMAP_Ovary_rawCounts_PCAspace.pdf"),
     width = 7, height = 6)
 print(umap_plot)
 dev.off()
+
 
 ## End of script
 ###############################################
