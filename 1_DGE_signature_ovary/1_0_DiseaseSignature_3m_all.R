@@ -10,7 +10,7 @@ library(ggplot2)
 library(harmonicmeanp)  
 
 
-setwd("~/Ovary_signatures/1_DGE_signature_all/")
+setwd("~/Ovary_signatures/1_DGE_signature_ovary/")
 
 # =========================================
 # Download HDF5
@@ -59,7 +59,7 @@ controls_all <- phenoDF %>%
 
 metadata <- phenoDF %>% dplyr::filter(sample.id %in% c(controls_all,case_ovary))
 saveRDS(metadata,
-        "~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/1_1_metadata.rds")
+        "1_1_Output_rds/1_1_metadata.rds")
 table(metadata$subtype)
 #OVCA.Differentiated OVCA.Immunoreactive    OVCA.Mesenchymal OVCA.Proliferative 
 #109                  90                 100                118 
@@ -69,7 +69,7 @@ table(metadata$subtype)
 #  dplyr::filter(sample.id %in% case_ovary) %>%
 #  split(.$subtype) %>%
 #  lapply(function(x) x$sample.id)
-#saveRDS(ovca_subtypes_list,"~/Ovary_signatures/1_DGE_signature_all/OVCA_TCGA_subtypes_ids_list.rds")
+#saveRDS(ovca_subtypes_list,"OVCA_TCGA_subtypes_ids_list.rds")
 
 # =========================================
 # DGE with 3 methods (solo OVARY)
@@ -107,8 +107,8 @@ make_signature_all <- function(res_df){
       Symbol,
       log2FoldChange,
       regulation = dplyr::if_else(log2FoldChange > 0, "up", "down"),
-      pvalue,                # <-- NUEVA COLUMNA
-      padj                   # <-- ya la tenías
+      pvalue,               
+      padj                 
     )
 }
 
@@ -136,15 +136,15 @@ run_and_save <- function(clade_label, case_ids, ctrl_ids, method = c("edgeR","DE
     output            = FALSE
   )
   
-  saveRDS(res, file.path("/home/jruiz/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/",
+  saveRDS(res, file.path("1_1_Output_rds/",
                          paste0("DE_full_", clade_label, "_", method_tag, ".rds")))
   
   sig_all <- make_signature_all(res)
   sig_sig <- make_signature_sig(res, lfc_thr = lfc_thr, padj_thr = padj_thr)
   
-  saveRDS(sig_all, file.path("/home/jruiz/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/",
+  saveRDS(sig_all, file.path("1_1_Output_rds/",
                              paste0("DE_", clade_label, "_ALL_", method_tag, ".rds")))
-  saveRDS(sig_sig, file.path("/home/jruiz/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/",
+  saveRDS(sig_sig, file.path("1_1_Output_rds/",
                              paste0("DE_", clade_label, "_signific_", method_tag, ".rds")))
   
   cnt <- function(x) {
@@ -166,23 +166,23 @@ for (m in c("edgeR","DESeq2","limma")) run_and_save("OVARY", case_ovary, control
 cat("Done. Signatures saved ALL and signific per method for OVARY\n")
 
 
-
 ### ————— After running the 3 methods, load the three results and generate the meta-signature:
-
 ### 1. Load results
-edge   <- readRDS("~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/DE_OVARY_ALL_EdgeR.rds")
-deseq2 <- readRDS("~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/DE_OVARY_ALL_DESeq2.rds")
-limma  <- readRDS("~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/DE_OVARY_ALL_limma.rds")
+edge   <- readRDS("1_1_Output_rds/DE_OVARY_ALL_EdgeR.rds")
+deseq2 <- readRDS("1_1_Output_rds/DE_OVARY_ALL_DESeq2.rds")
+limma  <- readRDS("1_1_Output_rds/DE_OVARY_ALL_limma.rds")
 
 ### 2. Merge tables (logFC + p-values) 
-#https://www.pnas.org/doi/full/10.1073/pnas.1814092116
-#To combine the evidence from the three differential expression methods (edgeR, DESeq2 and limma),
-#we used the Harmonic Mean P-value (HMP) method introduced by Wilson (2019). 
-#The HMP is explicitly designed to aggregate multiple p-values while maintaining 
-#statistical validity under arbitrary dependence, which is expected in our context
-#because the three DGE methods analyze the same expression data and share similar model assumptions.
+# https://www.pnas.org/doi/full/10.1073/pnas.1814092116
+# Para combinar la evidencia de los tres métodos de expresión diferencial
+# (edgeR, DESeq2 y limma), utilizamos el método inverse normal / Stouffer.
+# Primero convertimos los p-values de cada método en Z-scores con signo,
+# usando el signo del logFC. Después combinamos los Z por gen:
+#   Z_meta = sum(Z_i) / sqrt(k)
+# y obtenemos un meta p-value bilateral:
+#   p_meta = 2 * pnorm(-abs(Z_meta)).
+# Finalmente, corregimos por múltiples pruebas con Benjamini–Hochberg.
 
-#
 meta_tmp <- edge %>%
   dplyr::select(
     Symbol,
@@ -209,20 +209,34 @@ meta_tmp <- edge %>%
     by = "Symbol"
   )
 
-### 3. Construir matriz de p-values (genes x métodos)
+### 3. Construir matrices de p-values y logFC (genes x métodos)
 pmat <- as.matrix(meta_tmp[, c("p_edgeR", "p_DESeq2", "p_limma")])
-pmat[pmat < .Machine$double.xmin] <- .Machine$double.xmin  # evitar ceros numéricos
+lfc_mat <- as.matrix(meta_tmp[, c("log2FC_edgeR", "log2FC_DESeq2", "log2FC_limma")])
 
-### 4. Calcular HMP por gen (fila)
-p_hmp <- apply(pmat, 1, function(pvec){
-  harmonicmeanp::p.hmp(pvec, L = length(pvec))
-})
+# Evitar problemas numéricos con p extremadamente pequeños o cercanos a 1
+eps <- .Machine$double.xmin
+pmat[pmat < eps]       <- eps
+pmat[pmat > 1 - eps]   <- 1 - eps
 
-### 5. Construir meta_all con HMP
+### 4. Calcular Z-scores con signo para cada método
+# p de entrada se asumen bilaterales; construimos Z firmado:
+# Z_i = sign(logFC_i) * qnorm(p_i/2, lower.tail = FALSE)
+z_mat <- sign(lfc_mat) * qnorm(pmat / 2, lower.tail = FALSE)
+
+### 5. Z combinado por gen (Stouffer) y meta p-value bilateral
+k_methods <- ncol(z_mat)
+
+z_meta <- rowSums(z_mat, na.rm = TRUE) / sqrt(k_methods)
+p_meta <- 2 * pnorm(-abs(z_meta))  # bilateral
+p_meta[p_meta < eps] <- eps
+
+
+### 6. Construir meta_all con Stouffer
 meta_all <- meta_tmp %>%
   dplyr::mutate(
-    pvalue_hmp   = p_hmp,
-    padj_hmp     = p.adjust(pvalue_hmp, method = "BH"),
+    z_meta       = z_meta,
+    pvalue_meta  = p_meta,
+    padj_meta    = p.adjust(pvalue_meta, method = "BH"),
     log2FC_mean  = (log2FC_edgeR + log2FC_DESeq2 + log2FC_limma) / 3,
     regulation   = dplyr::if_else(log2FC_mean > 0, "up", "down"),
     # cuántos métodos individuales son significativos (FDR < 0.01)
@@ -234,27 +248,31 @@ meta_all <- meta_tmp %>%
     Symbol,
     log2FoldChange = log2FC_mean,
     regulation,
-    pvalue_hmp,
-    padj = padj_hmp,
+    z_meta,
+    pvalue_meta,
+    padj = padj_meta,
     n_sig_methods,
     log2FC_edgeR,  p_edgeR,  padj_edgeR,
     log2FC_DESeq2, p_DESeq2, padj_DESeq2,
     log2FC_limma,  p_limma,  padj_limma
   )
+meta_all$padj[meta_all$padj < eps] <- eps
+
 
 saveRDS(
   meta_all,
-  "~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/Meta_DE_OVARY_ALL_HMP.rds"
+  "1_1_Output_rds/1_2_Meta_DE_OVARY_ALL_Stouffer.rds"
 )
 
-### 6. Meta-significant & consistent genes (consenso + efecto)
+meta_all_compare <- meta_all %>% dplyr::select(Symbol,pvalue_meta,padj,n_sig_methods, p_edgeR,p_DESeq2,p_limma)
 
+### 7. Meta-significant & consistent genes (consenso + efecto)
 meta_sig <- meta_all %>%
   dplyr::filter(
     # consistencia de dirección entre métodos
     sign(log2FC_edgeR)   == sign(log2FC_DESeq2),
     sign(log2FC_edgeR)   == sign(log2FC_limma),
-    # significancia según p combinada HMP
+    # significancia según p combinada (Stouffer)
     padj <= 0.01,
     # al menos 2 métodos individuales significativos (puedes cambiar a ==3 si quieres ultra estricto)
     n_sig_methods >= 2,
@@ -264,10 +282,11 @@ meta_sig <- meta_all %>%
 
 saveRDS(
   meta_sig,
-  "~/Ovary_signatures/1_DGE_signature_all/1_1_Output_rds/Meta_DE_OVARY_significant_HMP.rds"
+  "1_1_Output_rds/1_2_Meta_DE_OVARY_significant_Stouffer.rds"
 )
 
-save.image("/STORAGE/csbig/jruiz/Ovary_data/Image_DiseaseSignature_OVARY.RData")
+
+save.image("/STORAGE/csbig/jruiz/Ovary_data/1_Output_RawOvary/Image_DiseaseSignature_OVARY.RData")
 #load("/STORAGE/csbig/jruiz/Ovary_data/Image_DiseaseSignature_OVARY.RData")
 
 #TOP_n = 10k n k=2
