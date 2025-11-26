@@ -1,3 +1,18 @@
+# =========================================
+# Meta-analysis of DE results using RobustRankAggreg (directional)
+# =========================================
+# This script:
+#  1) Loads gene-level DE results from edgeR, DESeq2, and limma.
+#  2) Merges log2FC and p-values into a common table.
+#  3) Performs rank-based meta-analysis separately for
+#     up-regulated and down-regulated genes using RobustRankAggreg (RRA).
+#  4) Builds a meta table (meta_all) with:
+#       - average log2FC across methods
+#       - direction-aware meta-analytic p-value and FDR
+#       - number of individually significant methods
+#  5) Defines a consensus set of meta-significant, directionally consistent genes
+#     with minimal effect size (meta_sig).
+# =========================================
 
 # Load Required Libraries
 # =========================================
@@ -7,27 +22,24 @@ library(dplyr)
 library(vroom)
 library(tibble)
 library(ggplot2)
-library(harmonicmeanp)  
+library(RobustRankAggreg)  # Rank-based meta-analysis (Kolde et al., Bioinformatics 2012)
 
 setwd("~/Ovary_signatures/1_DGE_signature_ovary/")
 
-
-### ————— After running the 3 methods, load the three results and generate the meta-signature:
-### 1. Load results
+# =========================================
+# 1. Load DE results from the three methods
+# =========================================
 edge   <- readRDS("1_1_Output_rds/DE_OVARY_ALL_EdgeR.rds")
 deseq2 <- readRDS("1_1_Output_rds/DE_OVARY_ALL_DESeq2.rds")
 limma  <- readRDS("1_1_Output_rds/DE_OVARY_ALL_limma.rds")
 
-### 2. Merge tables (logFC + p-values) 
-# https://www.pnas.org/doi/full/10.1073/pnas.1814092116
-# Para combinar la evidencia de los tres métodos de expresión diferencial
-# (edgeR, DESeq2 y limma), utilizamos el método inverse normal / Stouffer.
-# Primero convertimos los p-values de cada método en Z-scores con signo,
-# usando el signo del logFC. Después combinamos los Z por gen:
-#   Z_meta = sum(Z_i) / sqrt(k)
-# y obtenemos un meta p-value bilateral:
-#   p_meta = 2 * pnorm(-abs(Z_meta)).
-# Finalmente, corregimos por múltiples pruebas con Benjamini–Hochberg.
+# =========================================
+# 2. Merge DE results (logFC + p-values)
+# =========================================
+# For each method, we keep:
+#   - log2FoldChange
+#   - raw p-value
+#   - adjusted p-value (FDR)
 
 meta_tmp <- edge %>%
   dplyr::select(
@@ -37,96 +49,202 @@ meta_tmp <- edge %>%
     padj_edgeR   = padj
   ) %>%
   dplyr::inner_join(
-    deseq2 %>% dplyr::select(
-      Symbol,
-      log2FC_DESeq2 = log2FoldChange,
-      p_DESeq2      = pvalue,
-      padj_DESeq2   = padj
-    ),
+    deseq2 %>%
+      dplyr::select(
+        Symbol,
+        log2FC_DESeq2 = log2FoldChange,
+        p_DESeq2      = pvalue,
+        padj_DESeq2   = padj
+      ),
     by = "Symbol"
   ) %>%
   dplyr::inner_join(
-    limma %>% dplyr::select(
-      Symbol,
-      log2FC_limma = log2FoldChange,
-      p_limma      = pvalue,
-      padj_limma   = padj
-    ),
+    limma %>%
+      dplyr::select(
+        Symbol,
+        log2FC_limma = log2FoldChange,
+        p_limma      = pvalue,
+        padj_limma   = padj
+      ),
     by = "Symbol"
   )
 
-### 3. Construir matrices de p-values y logFC (genes x métodos)
-pmat <- as.matrix(meta_tmp[, c("p_edgeR", "p_DESeq2", "p_limma")])
-lfc_mat <- as.matrix(meta_tmp[, c("log2FC_edgeR", "log2FC_DESeq2", "log2FC_limma")])
-
-# Evitar problemas numéricos con p extremadamente pequeños o cercanos a 1
 eps <- .Machine$double.xmin
-pmat[pmat < eps]       <- eps
-pmat[pmat > 1 - eps]   <- 1 - eps
+N_genes <- nrow(meta_tmp)
 
-### 4. Calcular Z-scores con signo para cada método
-# p de entrada se asumen bilaterales; construimos Z firmado:
-# Z_i = sign(logFC_i) * qnorm(p_i/2, lower.tail = FALSE)
-z_mat <- sign(lfc_mat) * qnorm(pmat / 2, lower.tail = FALSE)
+# =========================================
+# 3. Directional rank-based meta-analysis with RobustRankAggreg
+# =========================================
+# Idea:
+#   - We create *direction-specific* ranked lists:
+#       * up-regulated genes (logFC > 0)
+#       * down-regulated genes (logFC < 0)
+#   - For each direction and method, genes are ranked by increasing p-value.
+#   - RRA is run separately for up and down.
+#   - For each gene, we then pick the meta p-value corresponding to the
+#     direction of the *average* log2FC across methods.
 
-### 5. Z combinado por gen (Stouffer) y meta p-value bilateral
-k_methods <- ncol(z_mat)
+# 3.1 Ranked lists for UP-regulated genes
+rank_edgeR_up <- meta_tmp %>%
+  dplyr::filter(log2FC_edgeR > 0) %>%
+  arrange(p_edgeR) %>%
+  pull(Symbol)
 
-z_meta <- rowSums(z_mat, na.rm = TRUE) / sqrt(k_methods)
-p_meta <- 2 * pnorm(-abs(z_meta))  # bilateral
-p_meta[p_meta < eps] <- eps
+rank_DESeq2_up <- meta_tmp %>%
+  dplyr::filter(log2FC_DESeq2 > 0) %>%
+  arrange(p_DESeq2) %>%
+  pull(Symbol)
 
+rank_limma_up <- meta_tmp %>%
+  dplyr::filter(log2FC_limma > 0) %>%
+  arrange(p_limma) %>%
+  pull(Symbol)
 
-### 6. Construir meta_all con Stouffer
+glist_up <- list(
+  edgeR  = rank_edgeR_up,
+  DESeq2 = rank_DESeq2_up,
+  limma  = rank_limma_up
+)
+
+# 3.2 Ranked lists for DOWN-regulated genes
+rank_edgeR_down <- meta_tmp %>%
+  dplyr::filter(log2FC_edgeR < 0) %>%
+  arrange(p_edgeR) %>%
+  pull(Symbol)
+
+rank_DESeq2_down <- meta_tmp %>%
+  dplyr::filter(log2FC_DESeq2 < 0) %>%
+  arrange(p_DESeq2) %>%
+  pull(Symbol)
+
+rank_limma_down <- meta_tmp %>%
+  dplyr::filter(log2FC_limma < 0) %>%
+  arrange(p_limma) %>%
+  pull(Symbol)
+
+glist_down <- list(
+  edgeR  = rank_edgeR_down,
+  DESeq2 = rank_DESeq2_down,
+  limma  = rank_limma_down
+)
+
+# 3.3 Run RRA for UP-regulated genes
+rra_up <- aggregateRanks(
+  glist  = glist_up,
+  N      = N_genes,
+  method = "RRA",
+  full   = TRUE,
+  exact  = TRUE
+)
+
+colnames(rra_up) <- c("Symbol", "score_up")
+
+rra_up <- rra_up %>%
+  dplyr::mutate(
+    pvalue_meta_up = pmax(score_up, eps)
+  ) %>%
+  dplyr::select(Symbol, pvalue_meta_up)
+
+# 3.4 Run RRA for DOWN-regulated genes
+rra_down <- aggregateRanks(
+  glist  = glist_down,
+  N      = N_genes,
+  method = "RRA",
+  full   = TRUE,
+  exact  = TRUE
+)
+
+colnames(rra_down) <- c("Symbol", "score_down")
+
+rra_down <- rra_down %>%
+  dplyr::mutate(
+    pvalue_meta_down = pmax(score_down, eps)
+  ) %>%
+  dplyr::select(Symbol, pvalue_meta_down)
+
+# =========================================
+# 4. Build meta_all table (direction-aware meta summary)
+# =========================================
+# For each gene:
+#   - We compute the average log2FC across methods.
+#   - We assign a direction (up/down) from this average.
+#   - We attach the directional RRA p-value:
+#       * if log2FC_mean > 0 → use pvalue_meta_up
+#       * if log2FC_mean < 0 → use pvalue_meta_down
+#   - We then apply a *single* BH correction across all genes.
+
 meta_all <- meta_tmp %>%
   dplyr::mutate(
-    z_meta       = z_meta,
-    pvalue_meta  = p_meta,
-    padj_meta    = p.adjust(pvalue_meta, method = "BH"),
-    log2FC_mean  = (log2FC_edgeR + log2FC_DESeq2 + log2FC_limma) / 3,
-    regulation   = dplyr::if_else(log2FC_mean > 0, "up", "down"),
-    # cuántos métodos individuales son significativos (FDR < 0.01)
+    log2FC_mean = (log2FC_edgeR + log2FC_DESeq2 + log2FC_limma) / 3,
+    regulation  = dplyr::if_else(log2FC_mean > 0, "up", "down"),
     n_sig_methods = (padj_edgeR  < 0.01) +
       (padj_DESeq2 < 0.01) +
       (padj_limma  < 0.01)
+  ) %>%
+  # Attach directional meta p-values
+  dplyr::left_join(rra_up,   by = "Symbol") %>%
+  dplyr::left_join(rra_down, by = "Symbol") %>%
+  # Choose the meta p-value according to the direction of the mean log2FC
+  dplyr::mutate(
+    pvalue_meta_raw = dplyr::case_when(
+      log2FC_mean > 0  ~ pvalue_meta_up,
+      log2FC_mean < 0  ~ pvalue_meta_down,
+      TRUE             ~ NA_real_
+    ),
+    # Replace missing or invalid values by 1 (non-significant)
+    pvalue_meta = pmax(dplyr::coalesce(pvalue_meta_raw, 1), eps),
+    padj        = p.adjust(pvalue_meta, method = "BH"),
+    padj        = pmax(padj, eps)
   ) %>%
   dplyr::select(
     Symbol,
     log2FoldChange = log2FC_mean,
     regulation,
-    z_meta,
     pvalue_meta,
-    padj = padj_meta,
+    padj,
     n_sig_methods,
     log2FC_edgeR,  p_edgeR,  padj_edgeR,
     log2FC_DESeq2, p_DESeq2, padj_DESeq2,
     log2FC_limma,  p_limma,  padj_limma
   )
-meta_all$padj[meta_all$padj < eps] <- eps
 
-
+# Save full meta-analysis table
 saveRDS(
   meta_all,
-  "1_1_Output_rds/1_2_Meta_DE_OVARY_ALL_Stouffer.rds"
+  "1_1_Output_rds/1_2_Meta_DE_OVARY_ALL_RobustRankAggreg_directional.rds"
 )
 
-meta_all_compare <- meta_all %>% dplyr::select(Symbol,pvalue_meta,padj,n_sig_methods, p_edgeR,p_DESeq2,p_limma)
+# Optional comparison table
+meta_all_compare <- meta_all %>%
+  dplyr::select(
+    Symbol,
+    pvalue_meta,
+    padj,
+    n_sig_methods,
+    p_edgeR,
+    p_DESeq2,
+    p_limma
+  )
 
-### 7. Meta-significant & consistent genes (consenso + efecto)
+# =========================================
+# 5. Define meta-significant & consistent genes
+# =========================================
+# Criteria:
+#   - Same sign of log2FC across edgeR, DESeq2 and limma
+#   - Direction-aware meta FDR (padj) <= 0.01
+#   - At least 2 of the 3 methods individually significant (FDR < 0.01)
+#   - Minimum effect size: |log2FoldChange| >= 1
+
 meta_sig <- meta_all %>%
   dplyr::filter(
-    # consistencia de dirección entre métodos
     sign(log2FC_edgeR)   == sign(log2FC_DESeq2),
     sign(log2FC_edgeR)   == sign(log2FC_limma),
-    # significancia según p combinada (Stouffer)
     padj <= 0.01,
-    # al menos 2 métodos individuales significativos (puedes cambiar a ==3 si quieres ultra estricto)
     n_sig_methods >= 2,
-    # tamaño de efecto mínimo
     abs(log2FoldChange) >= 1
   )
 
 saveRDS(
   meta_sig,
-  "1_1_Output_rds/1_2_Meta_DE_OVARY_significant_Stouffer.rds"
+  "1_1_Output_rds/1_2_Meta_DE_OVARY_significant_RobustRankAggreg_directional.rds"
 )
