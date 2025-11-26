@@ -1,8 +1,8 @@
 ###############################################
 ## Raw counts matrices + global PCA / t-SNE / UMAP (OVARY)
 ## - TCGA ovary tumors
-## - Homologous ovary controls (GTEx + TCGA adjacent)
-## - Autoencoder-selected controls
+## - Homologous ovary controls 
+## - Autoencoder-selected controls (GTEx + TCGA adjacent+ TARGET)
 ## - CPM filtering on raw counts
 ## - PCA, t-SNE and UMAP using filtered raw counts
 ###############################################
@@ -118,8 +118,8 @@ metadata_all <- metadata_all %>%
   dplyr::mutate(
     group_pca = dplyr::case_when(
       sample.id %in% case_ovary           ~ "TCGA_tumor_ovary",
-      sample.id %in% controls_autoencoder ~ "control_autoencoder",
-      sample.id %in% controls_ovary       ~ "control_ovary_GTEx_TCGAadj",
+      sample.id %in% controls_autoencoder ~ "control_autoencoder (TCGAadjacent_gtex_target)",
+      sample.id %in% controls_ovary       ~ "control_ovary_GTEx",
       TRUE                                ~ "other"
     )
   )
@@ -185,11 +185,11 @@ saveRDS(
 
 saveRDS(
   expr_raw_ovary_homolog,
-  file = file.path(OUT_DIR, "Ovary_TCGA_tumor_plus_homologousControls_rawCounts_filtered.rds")
+  file = file.path(OUT_DIR, "Ovary_TCGA_tumor_plus_nonhomologousControls_rawCounts_filtered.rds")
 )
 saveRDS(
   metadata_ovary_homolog,
-  file = file.path(OUT_DIR, "Metadata_Ovary_TCGA_tumor_plus_homologousControls_filtered.rds")
+  file = file.path(OUT_DIR, "Metadata_Ovary_TCGA_tumor_plus_nonhomologousControls_filtered.rds")
 )
 
 saveRDS(
