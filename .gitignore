@@ -14,6 +14,7 @@
 #!*.md
 !*.png
 !*.pdf
+!*.tsv
 # (Optional) Allow specific folders
 #!docs/
 #!config/
@@ -21,7 +22,7 @@
 # Explicitly ignore common data/bioinformatics file types
 *.RData
 *.rds
-*.tsv
+#*.tsv
 *.csv
 *.xlsx
 *.xls
