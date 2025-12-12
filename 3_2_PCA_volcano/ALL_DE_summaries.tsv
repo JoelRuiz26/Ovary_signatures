@@ -1,0 +1,5 @@
+Comparison	Upregulated	Downregulated	NotSignificant	TotalGenes
+auto	4919	6895	12403	24217
+homolog	7839	5159	11219	24217
+clean_no_neg	7787	4938	10954	23679
+clean_rescued	7839	5159	11219	24217
