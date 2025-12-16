@@ -17,6 +17,14 @@ dds_files <- c(
   "dds_tumor_Ctlhomolog_CLEAN_rescuedNegatives.rds"
 )
 
+dds_tumor_Ctlhomolog <- readRDS("~/Ovary_signatures/2_1_Normalized_corrected_counts/dds_tumor_Ctlhomolog.rds")
+dds_tumor_Ctlhomolog_CLEAN_rescuedNegatives <- readRDS("~/Ovary_signatures/2_1_Normalized_corrected_counts/dds_tumor_Ctlhomolog_CLEAN_rescuedNegatives.rds")
+
+
+summary(sizeFactors(dds_tumor_Ctlhomolog))
+summary(sizeFactors(dds_tumor_Ctlhomolog_CLEAN_rescuedNegatives))
+
+
 ## =========================
 ## 1) Load all dds objects
 ## =========================
