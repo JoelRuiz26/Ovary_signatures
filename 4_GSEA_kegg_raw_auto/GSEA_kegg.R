@@ -5,8 +5,8 @@ suppressPackageStartupMessages({
   library(readr)
   library(tibble)
   library(ggplot2)
-  library(clusterProfiler)
-  library(enrichplot)
+  library(msigdbr)
+  library(fgsea)
 })
 
 # ===================== PATHS ===================== #
@@ -22,6 +22,19 @@ out_dirs <- c(
   "/home/jruiz/Ovary_signatures/4_GSEA_kegg_raw_auto"
 )
 invisible(lapply(out_dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
+
+# ===================== PARAMETERS ===================== #
+# C6 = Oncogenic signatures (MSigDB)
+MSIG_CATEGORY    <- "C6"
+MSIG_SUBCATEGORY <- NULL  # no aplica para C6
+
+# GSEA settings
+MIN_SIZE <- 15
+MAX_SIZE <- 500
+NPERM    <- 20000   # más estable, menos warnings tipo rmSimple
+
+# Output settings
+SHOW_TOP <- 30      # más categorías en plots (y PDFs más altos)
 
 # ===================== SAFE READ ===================== #
 read_rds_safe <- function(p) {
@@ -53,72 +66,126 @@ make_rank <- function(df, label = "dataset") {
   ranks
 }
 
-run_gse_kegg <- function(ranks, label,
-                         organism = "hsa",
-                         pvalueCutoff = 0.05,
-                         minGSSize = 10,
-                         maxGSSize = 500,
-                         eps = 1e-10) {
+# C6 oncogenic sets from MSigDB (Entrez IDs)
+get_msig_oncogenic <- function() {
+  message("Cargando MSigDB ", MSIG_CATEGORY, " (oncogenic signatures)...")
+  msig <- msigdbr(species = "Homo sapiens", category = MSIG_CATEGORY)
   
-  message("Running gseKEGG for: ", label)
+  # pathways: named list of Entrez IDs (character)
+  pathways <- msig %>%
+    transmute(gs_name, entrez_gene) %>%
+    filter(!is.na(entrez_gene)) %>%
+    mutate(entrez_gene = as.character(entrez_gene)) %>%
+    group_by(gs_name) %>%
+    summarize(genes = list(unique(entrez_gene)), .groups = "drop")
   
-  tryCatch({
-    gseKEGG(
-      geneList     = ranks,
-      organism     = organism,
-      pvalueCutoff = pvalueCutoff,
-      minGSSize    = minGSSize,
-      maxGSSize    = maxGSSize,
-      eps          = eps,
-      verbose      = FALSE
-    )
-  }, error = function(e) {
-    message("ERROR en gseKEGG (", label, "): ", conditionMessage(e))
-    NULL
-  })
+  setNames(pathways$genes, pathways$gs_name)
 }
 
-save_all <- function(gsea_obj, label) {
+run_fgsea_oncogenic <- function(ranks, label, pathways,
+                                minSize = MIN_SIZE,
+                                maxSize = MAX_SIZE,
+                                nperm   = NPERM) {
   
-  if (is.null(gsea_obj) || nrow(as.data.frame(gsea_obj)) == 0) {
+  message("Running fgsea (MSigDB C6) for: ", label,
+          " | genes=", length(ranks),
+          " | sets=", length(pathways))
+  
+  set.seed(1)
+  res <- fgsea(
+    pathways = pathways,
+    stats    = ranks,
+    minSize  = minSize,
+    maxSize  = maxSize,
+    nperm    = nperm
+  ) %>%
+    as_tibble() %>%
+    arrange(padj) %>%
+    mutate(
+      # compatibilidad con tu tabla anterior
+      ID          = pathway,
+      Description = pathway,
+      p.adjust    = padj,
+      setSize     = size,
+      enrichmentScore = ES,
+      core_enrichment = leadingEdge %>% vapply(function(x) paste(x, collapse="/"), character(1))
+    ) %>%
+    select(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, core_enrichment)
+  
+  res
+}
+
+save_all <- function(df, label) {
+  
+  if (is.null(df) || nrow(df) == 0) {
     message("Sin resultados GSEA para: ", label)
     return(invisible(NULL))
   }
   
-  df <- as.data.frame(gsea_obj)
-  
   # ---------- guardar tablas ----------
   for (od in out_dirs) {
     write_tsv(df, file.path(od, paste0("GSEA_KEGG_", label, ".tsv")))
-    saveRDS(gsea_obj, file.path(od, paste0("GSEA_KEGG_", label, ".rds")))
+    saveRDS(df, file.path(od, paste0("GSEA_KEGG_", label, ".rds")))
   }
   
   # ---------- plots ----------
-  p_dot <- dotplot(gsea_obj, showCategory = 20, split = ".sign") +
-    facet_grid(. ~ .sign) +
-    labs(title = paste0("GSEA KEGG — ", label))
-  
-  p_ridge <- ridgeplot(gsea_obj, showCategory = 20) +
-    labs(title = paste0("GSEA KEGG (ridge) — ", label))
-  
   top_df <- df %>%
     arrange(p.adjust) %>%
-    slice_head(n = 20) %>%
-    mutate(Description = factor(Description, levels = rev(Description)))
+    slice_head(n = SHOW_TOP) %>%
+    mutate(
+      Direction = ifelse(NES >= 0, "Up", "Down"),
+      Description = factor(Description, levels = rev(Description))
+    )
   
+  # 1) "Dotplot" estilo fgsea: NES vs término, tamaño=setSize, color=-log10(FDR)
+  p_dot <- ggplot(top_df, aes(x = NES, y = Description)) +
+    geom_point(aes(size = setSize, alpha = -log10(p.adjust))) +
+    labs(
+      title = paste0("GSEA (MSigDB C6 oncogenic) — ", label),
+      x = "NES", y = NULL
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 8)
+    )
+  
+  # 2) Barplot NES top
   p_nes <- ggplot(top_df, aes(x = Description, y = NES)) +
     geom_col() +
     coord_flip() +
-    labs(title = paste0("Top KEGG pathways — ", label),
-         x = NULL, y = "NES")
+    labs(
+      title = paste0("Top oncogenic signatures — ", label),
+      x = NULL, y = "NES"
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 8)
+    )
+  
+  # 3) "Ridgeplot" no aplica directo sin objeto gseaResult;
+  # hacemos un plot alternativo: -log10(FDR) vs término
+  p_fdr <- ggplot(top_df, aes(x = -log10(p.adjust), y = Description)) +
+    geom_point() +
+    labs(
+      title = paste0("Significance (FDR) — ", label),
+      x = expression(-log[10]("FDR")), y = NULL
+    ) +
+    theme_minimal() +
+    theme(
+      axis.text.y = element_text(size = 8)
+    )
+  
+  # PDFs más altos para evitar solapamiento
+  pdf_h <- max(10, 0.35 * nrow(top_df) + 4)  # altura dinámica
+  pdf_w <- 12
   
   for (od in out_dirs) {
     ggsave(file.path(od, paste0("PLOT_GSEA_KEGG_", label, "_dotplot.pdf")),
-           p_dot, width = 10, height = 6)
-    ggsave(file.path(od, paste0("PLOT_GSEA_KEGG_", label, "_ridgeplot.pdf")),
-           p_ridge, width = 10, height = 7)
+           p_dot, width = pdf_w, height = pdf_h, units = "in")
     ggsave(file.path(od, paste0("PLOT_GSEA_KEGG_", label, "_NES_top20.pdf")),
-           p_nes, width = 10, height = 7)
+           p_nes, width = pdf_w, height = pdf_h, units = "in")
+    ggsave(file.path(od, paste0("PLOT_GSEA_KEGG_", label, "_ridgeplot.pdf")),
+           p_fdr, width = pdf_w, height = pdf_h, units = "in")
   }
   
   invisible(df)
@@ -128,10 +195,15 @@ save_all <- function(gsea_obj, label) {
 ranks_raw <- make_rank(DE_full_raw_DESeq2, "raw")
 ranks_ae  <- make_rank(DE_full_ae_DESeq2,  "autoencoder")
 
-gsea_raw <- run_gse_kegg(ranks_raw, "raw")
-gsea_ae  <- run_gse_kegg(ranks_ae,  "autoencoder")
+pathways_onc <- get_msig_oncogenic()
 
-df_raw <- save_all(gsea_raw, "raw")
-df_ae  <- save_all(gsea_ae,  "autoencoder")
+df_raw <- run_fgsea_oncogenic(ranks_raw, "raw", pathways_onc)
+df_ae  <- run_fgsea_oncogenic(ranks_ae,  "autoencoder", pathways_onc)
+
+df_raw <- save_all(df_raw, "raw")
+df_ae  <- save_all(df_ae,  "autoencoder")
 
 message("DONE.")
+message("Outputs overwritten in:")
+message(" - ", out_dirs[1])
+message(" - ", out_dirs[2])
