@@ -7,6 +7,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(msigdbr)
   library(fgsea)
+  library(stringr)
 })
 
 # ===================== PATHS ===================== #
@@ -24,17 +25,10 @@ out_dirs <- c(
 invisible(lapply(out_dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
 
 # ===================== PARAMETERS ===================== #
-# C6 = Oncogenic signatures (MSigDB)
-MSIG_CATEGORY    <- "C6"
-MSIG_SUBCATEGORY <- NULL  # no aplica para C6
-
-# GSEA settings
+MSIG_COLLECTION <- "C6"   # oncogenic signatures
 MIN_SIZE <- 15
 MAX_SIZE <- 500
-NPERM    <- 20000   # más estable, menos warnings tipo rmSimple
-
-# Output settings
-SHOW_TOP <- 30      # más categorías en plots (y PDFs más altos)
+SHOW_TOP <- 30
 
 # ===================== SAFE READ ===================== #
 read_rds_safe <- function(p) {
@@ -48,7 +42,6 @@ DE_full_ae_DESeq2  <- read_rds_safe(paths$ae)
 
 # ===================== HELPERS ===================== #
 make_rank <- function(df, label = "dataset") {
-  
   x <- df %>%
     filter(!is.na(GeneID), !is.na(log2FoldChange)) %>%
     mutate(GeneID = as.character(GeneID)) %>%
@@ -60,124 +53,135 @@ make_rank <- function(df, label = "dataset") {
   names(ranks) <- x$GeneID
   ranks <- sort(ranks, decreasing = TRUE)
   
-  if (length(ranks) < 1000) {
-    warning("Ranking pequeño (", length(ranks), ") en ", label)
-  }
+  if (length(ranks) < 1000) warning("Ranking pequeño (", length(ranks), ") en ", label)
   ranks
 }
 
-# C6 oncogenic sets from MSigDB (Entrez IDs)
+# ---- MSigDB C6: en tu versión, Entrez está en ncbi_gene ----
 get_msig_oncogenic <- function() {
-  message("Cargando MSigDB ", MSIG_CATEGORY, " (oncogenic signatures)...")
-  msig <- msigdbr(species = "Homo sapiens", category = MSIG_CATEGORY)
+  message("Cargando MSigDB ", MSIG_COLLECTION, " (oncogenic signatures)...")
   
-  # pathways: named list of Entrez IDs (character)
-  pathways <- msig %>%
-    transmute(gs_name, entrez_gene) %>%
-    filter(!is.na(entrez_gene)) %>%
-    mutate(entrez_gene = as.character(entrez_gene)) %>%
+  msig <- msigdbr(species = "Homo sapiens", collection = MSIG_COLLECTION)
+  
+  if (!("ncbi_gene" %in% colnames(msig))) {
+    stop("No encontré 'ncbi_gene' en msigdbr. Columnas:\n", paste(colnames(msig), collapse = ", "))
+  }
+  
+  # mapping para labels legibles (puede repetirse, por eso luego haremos Label único)
+  map_tbl <- msig %>%
+    distinct(gs_name, gs_description) %>%
+    mutate(gs_description = ifelse(is.na(gs_description) | gs_description == "", gs_name, gs_description))
+  
+  pathways_tbl <- msig %>%
+    transmute(
+      gs_name = gs_name,
+      entrez  = as.character(ncbi_gene)
+    ) %>%
+    filter(!is.na(entrez), entrez != "") %>%
     group_by(gs_name) %>%
-    summarize(genes = list(unique(entrez_gene)), .groups = "drop")
+    summarize(genes = list(unique(entrez)), .groups = "drop")
   
-  setNames(pathways$genes, pathways$gs_name)
+  pathways <- setNames(pathways_tbl$genes, pathways_tbl$gs_name)
+  list(pathways = pathways, map_tbl = map_tbl)
 }
 
 run_fgsea_oncogenic <- function(ranks, label, pathways,
                                 minSize = MIN_SIZE,
-                                maxSize = MAX_SIZE,
-                                nperm   = NPERM) {
-  
-  message("Running fgsea (MSigDB C6) for: ", label,
+                                maxSize = MAX_SIZE) {
+  message("Running fgseaMultilevel (MSigDB C6) for: ", label,
           " | genes=", length(ranks),
           " | sets=", length(pathways))
   
   set.seed(1)
-  res <- fgsea(
+  fgseaMultilevel(
     pathways = pathways,
     stats    = ranks,
     minSize  = minSize,
-    maxSize  = maxSize,
-    nperm    = nperm
+    maxSize  = maxSize
   ) %>%
     as_tibble() %>%
     arrange(padj) %>%
     mutate(
-      # compatibilidad con tu tabla anterior
-      ID          = pathway,
-      Description = pathway,
-      p.adjust    = padj,
-      setSize     = size,
+      ID = pathway,
+      p.adjust = padj,
+      pvalue   = pval,
+      setSize  = size,
       enrichmentScore = ES,
-      core_enrichment = leadingEdge %>% vapply(function(x) paste(x, collapse="/"), character(1))
+      core_enrichment = vapply(leadingEdge, function(x) paste(x, collapse="/"), character(1))
     ) %>%
-    select(ID, Description, setSize, enrichmentScore, NES, pvalue, p.adjust, core_enrichment)
-  
-  res
+    select(ID, setSize, enrichmentScore, NES, pvalue, p.adjust, core_enrichment)
 }
 
-save_all <- function(df, label) {
+save_all <- function(df, label, map_tbl) {
   
   if (is.null(df) || nrow(df) == 0) {
     message("Sin resultados GSEA para: ", label)
     return(invisible(NULL))
   }
   
-  # ---------- guardar tablas ----------
+  # añade descripción bonita
+  df2 <- df %>%
+    left_join(map_tbl, by = c("ID" = "gs_name")) %>%
+    mutate(
+      Description = ifelse(is.na(gs_description) | gs_description == "", ID, gs_description),
+      Description = str_wrap(Description, width = 55)
+    ) %>%
+    select(ID, Description, everything(), -gs_description)
+  
+  # ---------- guardar tablas (sobrescribe) ----------
   for (od in out_dirs) {
-    write_tsv(df, file.path(od, paste0("GSEA_KEGG_", label, ".tsv")))
-    saveRDS(df, file.path(od, paste0("GSEA_KEGG_", label, ".rds")))
+    write_tsv(df2, file.path(od, paste0("GSEA_KEGG_", label, ".tsv")))
+    saveRDS(df2, file.path(od, paste0("GSEA_KEGG_", label, ".rds")))
   }
   
   # ---------- plots ----------
-  top_df <- df %>%
+  # FIX: evitar factor levels duplicados creando un Label único por fila
+  top_df <- df2 %>%
     arrange(p.adjust) %>%
     slice_head(n = SHOW_TOP) %>%
     mutate(
-      Direction = ifelse(NES >= 0, "Up", "Down"),
-      Description = factor(Description, levels = rev(Description))
+      Label = paste0(Description, " (", ID, ")"),
+      Label = factor(Label, levels = rev(unique(Label)))
     )
   
-  # 1) "Dotplot" estilo fgsea: NES vs término, tamaño=setSize, color=-log10(FDR)
-  p_dot <- ggplot(top_df, aes(x = NES, y = Description)) +
-    geom_point(aes(size = setSize, alpha = -log10(p.adjust))) +
+  pdf_h <- max(14, 0.42 * nrow(top_df) + 6)
+  pdf_w <- 13
+  
+  # 1) Dotplot: color por NES, size por setSize, alpha por FDR
+  p_dot <- ggplot(top_df, aes(x = NES, y = Label)) +
+    geom_point(aes(size = setSize, color = NES, alpha = -log10(p.adjust))) +
+    scale_color_gradient2(low = "#2C7BB6", mid = "white", high = "#D7191C") +
+    guides(alpha = "none") +
     labs(
       title = paste0("GSEA (MSigDB C6 oncogenic) — ", label),
       x = "NES", y = NULL
     ) +
-    theme_minimal() +
-    theme(
-      axis.text.y = element_text(size = 8)
-    )
+    theme_minimal(base_size = 12) +
+    theme(axis.text.y = element_text(size = 9))
   
-  # 2) Barplot NES top
-  p_nes <- ggplot(top_df, aes(x = Description, y = NES)) +
+  # 2) NES barplot con signo
+  p_nes <- ggplot(top_df, aes(x = Label, y = NES, fill = NES)) +
     geom_col() +
     coord_flip() +
+    scale_fill_gradient2(low = "#2C7BB6", mid = "white", high = "#D7191C") +
+    guides(fill = "none") +
     labs(
       title = paste0("Top oncogenic signatures — ", label),
       x = NULL, y = "NES"
     ) +
-    theme_minimal() +
-    theme(
-      axis.text.y = element_text(size = 8)
-    )
+    theme_minimal(base_size = 12) +
+    theme(axis.text.y = element_text(size = 9))
   
-  # 3) "Ridgeplot" no aplica directo sin objeto gseaResult;
-  # hacemos un plot alternativo: -log10(FDR) vs término
-  p_fdr <- ggplot(top_df, aes(x = -log10(p.adjust), y = Description)) +
-    geom_point() +
+  # 3) Significance: -log10(FDR)
+  p_fdr <- ggplot(top_df, aes(x = -log10(p.adjust), y = Label)) +
+    geom_point(aes(size = setSize, color = NES), alpha = 0.9) +
+    scale_color_gradient2(low = "#2C7BB6", mid = "white", high = "#D7191C") +
     labs(
       title = paste0("Significance (FDR) — ", label),
       x = expression(-log[10]("FDR")), y = NULL
     ) +
-    theme_minimal() +
-    theme(
-      axis.text.y = element_text(size = 8)
-    )
-  
-  # PDFs más altos para evitar solapamiento
-  pdf_h <- max(10, 0.35 * nrow(top_df) + 4)  # altura dinámica
-  pdf_w <- 12
+    theme_minimal(base_size = 12) +
+    theme(axis.text.y = element_text(size = 9))
   
   for (od in out_dirs) {
     ggsave(file.path(od, paste0("PLOT_GSEA_KEGG_", label, "_dotplot.pdf")),
@@ -188,20 +192,22 @@ save_all <- function(df, label) {
            p_fdr, width = pdf_w, height = pdf_h, units = "in")
   }
   
-  invisible(df)
+  invisible(df2)
 }
 
 # ===================== RUN ===================== #
 ranks_raw <- make_rank(DE_full_raw_DESeq2, "raw")
 ranks_ae  <- make_rank(DE_full_ae_DESeq2,  "autoencoder")
 
-pathways_onc <- get_msig_oncogenic()
+msig_obj <- get_msig_oncogenic()
+pathways_onc <- msig_obj$pathways
+map_tbl <- msig_obj$map_tbl
 
 df_raw <- run_fgsea_oncogenic(ranks_raw, "raw", pathways_onc)
 df_ae  <- run_fgsea_oncogenic(ranks_ae,  "autoencoder", pathways_onc)
 
-df_raw <- save_all(df_raw, "raw")
-df_ae  <- save_all(df_ae,  "autoencoder")
+df_raw <- save_all(df_raw, "raw", map_tbl)
+df_ae  <- save_all(df_ae,  "autoencoder", map_tbl)
 
 message("DONE.")
 message("Outputs overwritten in:")
