@@ -7,6 +7,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(clusterProfiler)
   library(enrichplot)
+  library(KEGGREST)
 })
 
 # ===================== CONFIG ===================== #
@@ -24,7 +25,7 @@ out_dirs <- c(
 invisible(lapply(out_dirs, dir.create, recursive = TRUE, showWarnings = FALSE))
 
 # KEGG settings
-ORGANISM <- "hsa"  # Homo sapiens
+ORGANISM <- "hsa"
 PVALUE_CUTOFF <- 0.05
 MIN_GS <- 10
 MAX_GS <- 500
@@ -38,7 +39,6 @@ PDF_H_RIDGE <- 16
 PDF_H_NES <- 14
 
 # (Opcional) filtrar términos de infección/disease tipo COVID del REPORTE/PLOTS
-# Ojo: esto NO cambia el GSEA, solo limpia la salida visual y las tablas guardadas.
 FILTER_DISEASE_TERMS <- TRUE
 DISEASE_PATTERN <- "COVID|CORONAVIRUS|SARS|INFLUENZA|VIRAL|INFECTION|HEPATITIS|MEASLES|TUBERCULOSIS"
 
@@ -71,17 +71,18 @@ make_rank <- function(df, label = "dataset") {
 }
 
 # ===================== KEGG (ONE-TIME DOWNLOAD) ===================== #
-# Descarga UNA vez el mapeo hsa genes -> KEGG pathways y nombres de pathways
-# y lo convierte a TERM2GENE / TERM2NAME para usar clusterProfiler::GSEA() offline en el mismo run.
+# Descarga UNA vez:
+# - gene -> pathway (TERM2GENE)
+# - pathway -> nombre (TERM2NAME)
 get_kegg_termdb_once <- function(organism = "hsa") {
   message("Descargando anotación KEGG una sola vez para: ", organism)
   
   # gene -> pathway
-  # retorna: hsa:#### \t path:xxxxxx
+  # ejemplo: names = "hsa:10458", values = "path:hsa04110"
   k_link <- tryCatch({
-    clusterProfiler::keggLink("pathway", organism)
+    KEGGREST::keggLink("pathway", organism)
   }, error = function(e) {
-    stop("Fallo keggLink(): ", conditionMessage(e))
+    stop("Fallo KEGGREST::keggLink(): ", conditionMessage(e))
   })
   
   term2gene <- tibble(
@@ -90,11 +91,12 @@ get_kegg_termdb_once <- function(organism = "hsa") {
   ) %>%
     distinct(term, gene)
   
-  # pathway -> name (descripción)
+  # pathway -> name
+  # names = "path:hsa04110", values = "Cell cycle - Homo sapiens (human)"
   k_list <- tryCatch({
-    clusterProfiler::keggList("pathway", organism)
+    KEGGREST::keggList("pathway", organism)
   }, error = function(e) {
-    stop("Fallo keggList(): ", conditionMessage(e))
+    stop("Fallo KEGGREST::keggList(): ", conditionMessage(e))
   })
   
   term2name <- tibble(
@@ -106,7 +108,7 @@ get_kegg_termdb_once <- function(organism = "hsa") {
   list(term2gene = term2gene, term2name = term2name)
 }
 
-# ===================== RUN GSEA (local) ===================== #
+# ===================== RUN GSEA (local TERM2GENE) ===================== #
 run_gsea_kegg_local <- function(ranks, label, term2gene, term2name) {
   message("Running KEGG GSEA (local TERM2GENE) for: ", label)
   
@@ -195,7 +197,7 @@ save_all <- function(gsea_obj, label) {
 ranks_raw <- make_rank(DE_full_raw_DESeq2, "raw")
 ranks_ae  <- make_rank(DE_full_ae_DESeq2,  "autoencoder")
 
-# <-- AQUÍ es donde se consulta KEGG UNA sola vez
+# <-- KEGG se consulta UNA sola vez aquí
 kegg_db <- get_kegg_termdb_once(ORGANISM)
 
 gsea_raw <- run_gsea_kegg_local(ranks_raw, "raw", kegg_db$term2gene, kegg_db$term2name)
