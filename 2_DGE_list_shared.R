@@ -2,12 +2,13 @@
 library(dplyr)
 library(ggvenn)
 library(ggplot2)
+library(stringr)
 
 base_dir <- "~/Ovary_signatures/"
 
 paths <- list(
-  raw_full_deseq2  = file.path(base_dir, "0_DGE_raw",         "DE_full_OVARY_DESeq2.rds"),
-  ae_full_deseq2   = file.path(base_dir, "1_DGE_autoencoder", "DE_full_OVARY_DESeq2.rds")
+  raw_full_deseq2 = file.path(base_dir, "0_DGE_raw",         "DE_full_OVARY_DESeq2.rds"),
+  ae_full_deseq2  = file.path(base_dir, "1_DGE_autoencoder", "DE_full_OVARY_DESeq2.rds")
 )
 
 read_rds_safe <- function(p) {
@@ -22,55 +23,56 @@ DE_full_ae_DESeq2  <- read_rds_safe(paths$ae_full_deseq2)
 PADJ_CUTOFF <- 0.01
 LFC_CUTOFF  <- 1
 
-# ===================== FILTRADO (SIG + EFECTO) ===================== #
+# ===================== FILTRADO ===================== #
 raw_sig <- DE_full_raw_DESeq2 %>%
   filter(!is.na(padj), padj < PADJ_CUTOFF,
          !is.na(log2FoldChange), abs(log2FoldChange) > LFC_CUTOFF) %>%
-  transmute(identifier, sign_raw = sign(log2FoldChange))
+  transmute(identifier)
 
 ae_sig <- DE_full_ae_DESeq2 %>%
   filter(!is.na(padj), padj < PADJ_CUTOFF,
          !is.na(log2FoldChange), abs(log2FoldChange) > LFC_CUTOFF) %>%
-  transmute(identifier, sign_ae = sign(log2FoldChange))
+  transmute(identifier)
 
-# ===================== COMPARTIDOS MISMA DIRECCIÓN (QC) ===================== #
-shared_same_direction <- inner_join(raw_sig, ae_sig, by = "identifier") %>%
-  filter(sign_raw == sign_ae)
-
-cat("padj <", PADJ_CUTOFF, " & |log2FC| >", LFC_CUTOFF, "\n")
-cat("Genes significativos+efecto (ovary_gtex_control):", n_distinct(raw_sig$identifier), "\n")
-cat("Genes significativos+efecto (Reference_control):",  n_distinct(ae_sig$identifier), "\n")
-cat("Genes compartidos (misma dirección):",             n_distinct(shared_same_direction$identifier), "\n")
-
-# ===================== LISTAS PARA VENN ===================== #
 venn_list <- list(
   ovary_gtex_control = unique(raw_sig$identifier),
   Reference_control  = unique(ae_sig$identifier)
 )
 
-# ===================== PLOT ===================== #
+# ===================== TITULO CORTO + WRAP ===================== #
+title_txt <- "Shared significant DE genes in ovarian cancer (DESeq2)"
+subtitle_txt <- paste0("padj < ", PADJ_CUTOFF, " and |log2FC| > ", LFC_CUTOFF)
+
+# ===================== PLOT (bonito) ===================== #
 venn_plot <- ggvenn(
   venn_list,
-  fill_color      = c("#2A9D8F", "#E76F51"),  # <-- colores nuevos
-  fill_alpha      = 0.55,
+  fill_color      = c("#1F77B4", "#FF7F0E"),  # azul/naranja (alto contraste)
+  fill_alpha      = 0.45,
   stroke_size     = 0.9,
   set_name_size   = 6,
-  text_size       = 0,        # quita números
-  show_percentage = FALSE     # quita porcentajes
+  text_size       = 6,
+  show_percentage = TRUE,
+  digits          = 1,
+  label_sep       = "\n"   # número arriba, % abajo
 ) +
   labs(
-    title = "Significant differentially expressed genes in ovarian cancer vs controls (DESeq2)",
-    subtitle = paste0("padj < ", PADJ_CUTOFF, " and |log2FC| > ", LFC_CUTOFF)
+    title = str_wrap(title_txt, width = 55),
+    subtitle = subtitle_txt
   ) +
-  theme_void(base_size = 13) +                 # quita ejes/grids/fondo tipo ggplot
+  coord_fixed() +  # evita deformación
+  theme_classic(base_size = 13) +
   theme(
-    plot.title    = element_text(face = "bold", hjust = 0.5),
-    plot.subtitle = element_text(hjust = 0.5),
-    legend.position = "none"
+    axis.line  = element_blank(),
+    axis.text  = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_blank(),
+    plot.title    = element_text(face = "bold", hjust = 0.5, margin = margin(b = 6)),
+    plot.subtitle = element_text(hjust = 0.5, margin = margin(b = 10)),
+    plot.margin   = margin(t = 14, r = 18, b = 12, l = 18)
   )
 
 # ===================== GUARDAR PDF ===================== #
-out_pdf <- file.path(base_dir, "venn_DESeq2_ovary_gtex_control_vs_Reference_control_padj0.01_log2FC1.pdf")
-ggsave(out_pdf, plot = venn_plot, device = cairo_pdf, width = 7, height = 6, units = "in")
+out_pdf <- file.path(base_dir, "venn_DESeq2.pdf")
+ggsave(out_pdf, plot = venn_plot, device = cairo_pdf, width = 7.5, height = 6.5, units = "in")
 
 cat("PDF guardado en:", out_pdf, "\n")
