@@ -40,7 +40,7 @@ venn_list <- list(
 )
 
 # ===================== TITULO CORTO + WRAP ===================== #
-title_txt <- "Shared significant DE genes in ovarian cancer (DESeq2)"
+title_txt <- "Ovarian cancer vs controls: shared significant DE genes"
 subtitle_txt <- paste0("padj < ", PADJ_CUTOFF, " and |log2FC| > ", LFC_CUTOFF)
 
 # ===================== PLOT (bonito) ===================== #
