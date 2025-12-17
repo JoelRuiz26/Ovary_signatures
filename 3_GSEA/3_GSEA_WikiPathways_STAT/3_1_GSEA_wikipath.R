@@ -20,7 +20,7 @@ paths <- list(
   ae  = file.path(base_dir, "1_DGE_autoencoder", "DE_full_OVARY_DESeq2.rds")
 )
 
-out_dir <- file.path(base_dir, "3_GSEA/3_GSEA_WikiPathways_STAT")
+out_dir <- file.path(base_dir, "3_GSEA","3_GSEA_WikiPathways_STAT")
 
 read_rds_safe <- function(p) {
   if (!file.exists(p)) stop("No existe el archivo: ", p)
