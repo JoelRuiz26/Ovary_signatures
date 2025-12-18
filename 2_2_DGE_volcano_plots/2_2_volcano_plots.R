@@ -20,16 +20,18 @@ paths <- list(
 out_dir <- file.path(base_dir, "2_2_DGE_volcano_plots")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-adenosine_genes <- c(
-  # Receptores
-  "ADORA1", "ADORA2A", "ADORA2B", "ADORA3",
+adenosine_genes <- unique(c(
+  # Receptores (human HGNC)
+  "ADORA1","ADORA2A","ADORA2B","ADORA3",
   
-  # Transportadores
-  "SLC28A1", "SLC29A1",
+  # Transportadores (familias típicas)
+  "SLC28A1","SLC28A2","SLC28A3",   # CNTs
+  "SLC29A1","SLC29A2","SLC29A3","SLC29A4",  # ENTs
   
-  # Enzimas
-  "NT5E", "ENTPD1", "DPP4", "ADK", "ADA", "CECR1"
-)
+  # Enzimas / ectoenzimas relevantes
+  "NT5E","ENTPD1","DPP4","ADK",
+  "ADA","ADA2","CECR1"  # ADA2 ~ CECR1 (alias frecuente)
+))
 
 
 padj_cut <- 0.05

@@ -84,7 +84,9 @@ if ("Symbol" %in% names(res)) {
 
 sig_all <- res2 %>%
   filter(!is.na(log2FoldChange), !is.na(pvalue), !is.na(padj)) %>%
-  distinct(Symbol, .keep_all = TRUE) %>%
+  group_by(Symbol) %>%
+  slice_min(order_by = padj, n = 1, with_ties = FALSE) %>%
+  ungroup() %>%
   transmute(
     Symbol,
     log2FoldChange,
