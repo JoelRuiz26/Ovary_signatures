@@ -20,7 +20,9 @@ paths <- list(
   ae  = file.path(base_dir, "1_DGE_autoencoder", "DE_full_OVARY_DESeq2.rds")
 )
 
-out_dir <- file.path(base_dir, "3_GSEA","3_GSEA_WikiPathways_STAT")
+# output folder (Reactome)
+out_dir <- file.path(base_dir, "3_GSEA", "3_GSEA_Reactome_STAT")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 read_rds_safe <- function(p) {
   if (!file.exists(p)) stop("No existe el archivo: ", p)
@@ -30,13 +32,14 @@ read_rds_safe <- function(p) {
 DE_raw <- read_rds_safe(paths$raw)
 DE_ae  <- read_rds_safe(paths$ae)
 
-# ===================== WIKIPATHWAYS TERM2GENE ===================== #
-wp <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:WIKIPATHWAYS") %>%
+# ===================== REACTOME TERM2GENE ===================== #
+# Reactome (MSigDB): C2:CP:REACTOME
+react <- msigdbr(species = "Homo sapiens", category = "C2", subcategory = "CP:REACTOME") %>%
   transmute(term = gs_name, entrez = entrez_gene) %>%
   filter(!is.na(entrez)) %>%
   distinct()
 
-TERM2GENE_WP <- wp
+TERM2GENE_REACT <- react
 
 # ===================== HELPERS ===================== #
 make_rank_stat <- function(df, stat_col = "stat", id_col = "GeneID") {
@@ -59,10 +62,10 @@ make_rank_stat <- function(df, stat_col = "stat", id_col = "GeneID") {
   geneList
 }
 
-run_gsea_wp <- function(geneList, p_cut = 0.05) {
+run_gsea_reactome <- function(geneList, p_cut = 0.05) {
   gsea <- GSEA(
     geneList     = geneList,
-    TERM2GENE    = TERM2GENE_WP,
+    TERM2GENE    = TERM2GENE_REACT,
     pvalueCutoff = 1,       # guardar FULL; filtrar después
     minGSSize    = 10,
     maxGSSize    = 500,
@@ -85,8 +88,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
   dfp <- gsea_df %>%
     filter(!is.na(NES), !is.na(p.adjust), p.adjust > 0) %>%
     mutate(
-      neglog10_fdr = -log10(p.adjust),
-      Direction = ifelse(NES >= 0, "Upregulated pathways", "Downregulated pathways")
+      neglog10_fdr = -log10(p.adjust)
     ) %>%
     filter(p.adjust < p_cut)
   
@@ -107,7 +109,8 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
   
   top <- bind_rows(top_up, top_down) %>%
     mutate(
-      Description = gsub("^WP_", "", Description)
+      # limpiar prefijo típico de MSigDB Reactome si aparece: "REACTOME_"
+      Description = gsub("^REACTOME_", "", Description)
     ) %>%
     arrange(NES) %>%
     mutate(Description = factor(Description, levels = unique(Description)))
@@ -118,7 +121,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     color = neglog10_fdr,
     size  = abs(NES)
   )) +
-    geom_point(alpha = 0.95, shape = 16) +   # <-- TODO BOLAS (sin triángulos)
+    geom_point(alpha = 0.95, shape = 16) +
     scale_color_viridis_c(name = expression(-log[10]("FDR"))) +
     scale_size_continuous(name = "|NES|") +
     labs(
@@ -139,16 +142,16 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
 }
 
 save_outputs <- function(prefix, subtitle, res_list) {
-  full_tsv <- file.path(out_dir, paste0(prefix, "_WikiPathways_STAT_FULL.tsv"))
-  sig_tsv  <- file.path(out_dir, paste0(prefix, "_WikiPathways_STAT_SIG_FDR0.05.tsv"))
-  pdf_top  <- file.path(out_dir, paste0(prefix, "_WikiPathways_STAT_top20_up_down.pdf"))
+  full_tsv <- file.path(out_dir, paste0(prefix, "_Reactome_STAT_FULL.tsv"))
+  sig_tsv  <- file.path(out_dir, paste0(prefix, "_Reactome_STAT_SIG_FDR0.05.tsv"))
+  pdf_top  <- file.path(out_dir, paste0(prefix, "_Reactome_STAT_top20_up_down.pdf"))
   
   write_tsv(res_list$full, full_tsv)
   write_tsv(res_list$sig,  sig_tsv)
   
   plot_top20_up_down(
     gsea_df    = res_list$full,
-    main_title = "GSEA WikiPathways",
+    main_title = "GSEA Reactome pathways",
     subtitle   = subtitle,
     out_pdf    = pdf_top,
     p_cut      = 0.05
@@ -162,16 +165,16 @@ save_outputs <- function(prefix, subtitle, res_list) {
 
 # ===================== RUN (RAW) ===================== #
 geneList_raw <- make_rank_stat(DE_raw, stat_col = "stat", id_col = "GeneID")
-res_raw <- run_gsea_wp(geneList_raw, p_cut = 0.05)
+res_raw <- run_gsea_reactome(geneList_raw, p_cut = 0.05)
 save_outputs(
   prefix   = "Ovary_control_GTEx",
   subtitle = "Ovary tumors vs ovary control GTEx",
   res_list = res_raw
 )
 
-# ===================== RUN (REFERENCE CONTROL / AUTOENCODER) ===================== #
+# ===================== RUN (REFERENCE CONTROL) ===================== #
 geneList_ae <- make_rank_stat(DE_ae, stat_col = "stat", id_col = "GeneID")
-res_ae <- run_gsea_wp(geneList_ae, p_cut = 0.05)
+res_ae <- run_gsea_reactome(geneList_ae, p_cut = 0.05)
 save_outputs(
   prefix   = "Reference_control",
   subtitle = "Ovary tumors vs reference control",

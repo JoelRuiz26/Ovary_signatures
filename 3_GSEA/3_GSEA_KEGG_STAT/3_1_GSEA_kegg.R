@@ -116,7 +116,7 @@ save_outputs <- function(prefix, subtitle, res_list) {
   
   plot_top20_up_down(
     gsea_df    = res_list$full,
-    main_title = "Gene set enrichment analysis using KEGG pathways",
+    main_title = "GSEA KEGG pathways",
     subtitle   = subtitle,
     out_pdf    = file.path(out_dir, paste0(prefix, "_KEGG_STAT_top20_up_down.pdf"))
   )
