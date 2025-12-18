@@ -86,7 +86,11 @@ prep_df <- function(df) {
 
 make_volcano <- function(df, subtitle, out_pdf) {
   
-  ad_df <- df %>% filter(is_adenosine_DE)
+  ad_df <- df %>%
+    filter(is_adenosine_DE) %>%
+    group_by(Gene) %>%
+    slice_max(order_by = neglog10, n = 1, with_ties = FALSE) %>%
+    ungroup()
   
   p <- ggplot(df, aes(log2FoldChange, neglog10)) +
     geom_point(aes(color = Type), size = 0.8, alpha = 0.75) +
