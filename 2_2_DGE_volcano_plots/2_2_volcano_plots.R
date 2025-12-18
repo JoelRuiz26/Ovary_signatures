@@ -21,10 +21,16 @@ out_dir <- file.path(base_dir, "2_2_DGE_volcano_plots")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 adenosine_genes <- c(
-  "ADORA1","ADORA2A","ADORA2B","ADORA3",
-  "ENTPD1","NT5E","ADA","ADK","PNP",
-  "SLC29A1","CD38","ENPP1"
+  # Receptores
+  "ADORA1", "ADORA2A", "ADORA2B", "ADORA3",
+  
+  # Transportadores
+  "SLC28A1", "SLC29A1",
+  
+  # Enzimas
+  "NT5E", "ENTPD1", "DPP4", "ADK", "ADA", "CECR1"
 )
+
 
 padj_cut <- 0.05
 lfc_cut  <- 1
