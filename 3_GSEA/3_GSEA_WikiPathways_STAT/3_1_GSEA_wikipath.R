@@ -106,6 +106,9 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     slice_head(n = 20)
   
   top <- bind_rows(top_up, top_down) %>%
+    mutate(
+      Description = gsub("^WP_", "", Description)
+    ) %>%
     arrange(NES) %>%
     mutate(Description = factor(Description, levels = unique(Description)))
   
