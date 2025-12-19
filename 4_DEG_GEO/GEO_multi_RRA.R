@@ -931,142 +931,60 @@ rank_lists_down <- make_rank_lists(
 )
 
 
-# ------------------------------------------------------------
-# Convierte rank_lists_{up,down} (list) a un data.frame largo
-# con columnas: dataset, Gene.symbol, direction, rank
-# ------------------------------------------------------------
-ranklists_to_long <- function(rank_lists, direction = c("up","down")) {
-  direction <- match.arg(direction)
-  if (length(rank_lists) == 0) {
-    return(data.frame(dataset=character(), Gene.symbol=character(),
-                      direction=character(), rank=integer(),
-                      stringsAsFactors = FALSE))
-  }
-  out <- do.call(rbind, lapply(names(rank_lists), function(ds) {
-    genes <- rank_lists[[ds]]
-    if (length(genes) == 0) return(NULL)
-    data.frame(
-      dataset     = ds,
-      Gene.symbol = as.character(genes),
-      direction   = direction,
-      rank        = seq_along(genes),
-      stringsAsFactors = FALSE
-    )
-  }))
-  rownames(out) <- NULL
-  out
-}
 
-# ------------------------------------------------------------
-# Construye un solo objeto GEO-DEGs a partir de rank_lists_up/down
-# ------------------------------------------------------------
-build_geo_degs_object <- function(rank_lists_up,
-                                  rank_lists_down,
-                                  keep_top = NULL,     # e.g. 2000; NULL = todo
-                                  min_datasets = 1L) { # genes presentes en >= k datasets
+# 9) correr RRA
+# UP-regulated meta-set
+rra_up <- RobustRankAggreg::aggregateRanks(
+  glist = rank_lists_up,
+  full  = TRUE   # para tener ranking en todo el universo posible
+)
+
+# DOWN-regulated meta-set
+rra_down <- RobustRankAggreg::aggregateRanks(
+  glist = rank_lists_down,
+  full  = TRUE
+)
+
+adjust_rra_no_filter <- function(rra_tbl, method = "BH") {
+  stopifnot(all(c("Name", "Score") %in% colnames(rra_tbl)))
   
-  up_long   <- ranklists_to_long(rank_lists_up,   "up")
-  down_long <- ranklists_to_long(rank_lists_down, "down")
-  
-  long_all <- rbind(up_long, down_long)
-  if (nrow(long_all) == 0) {
-    stop("No hay genes en rank_lists_up/down.")
-  }
-  
-  # (Opcional) quedarnos con el top-N por dataset y dirección
-  if (!is.null(keep_top)) {
-    long_all <- long_all[long_all$rank <= keep_top, , drop = FALSE]
-  }
-  
-  # Resumen por gen: en cuántos datasets aparece como up/down
-  genes <- unique(long_all$Gene.symbol)
-  
-  up_counts <- tapply(long_all$direction == "up", long_all$Gene.symbol, sum)
-  dn_counts <- tapply(long_all$direction == "down", long_all$Gene.symbol, sum)
-  
-  # Asegurar 0 para genes ausentes en una dirección
-  up_counts <- up_counts[genes]; up_counts[is.na(up_counts)] <- 0
-  dn_counts <- dn_counts[genes]; dn_counts[is.na(dn_counts)] <- 0
-  
-  # Número total de datasets en los que aparece (en cualquier dirección)
-  any_counts <- tapply(rep(1L, nrow(long_all)), long_all$Gene.symbol, sum)
-  any_counts <- any_counts[genes]; any_counts[is.na(any_counts)] <- 0
-  
-  # Score simple: + si tiende a up, - si tiende a down
-  score_simple <- as.integer(up_counts) - as.integer(dn_counts)
-  
-  summary_tbl <- data.frame(
-    Gene.symbol    = genes,
-    up_in_datasets = as.integer(up_counts),
-    down_in_datasets = as.integer(dn_counts),
-    total_hits     = as.integer(any_counts),
-    score_simple   = score_simple,
+  out <- data.frame(
+    Gene.symbol = as.character(rra_tbl$Name),
+    p_raw       = as.numeric(rra_tbl$Score),
     stringsAsFactors = FALSE
   )
   
-  # Filtrado por mínimo de datasets
-  summary_tbl <- summary_tbl[summary_tbl$total_hits >= min_datasets, , drop = FALSE]
-  
-  # Orden: primero los más “consistentes”
-  summary_tbl <- summary_tbl[
-    order(-abs(summary_tbl$score_simple),
-          -summary_tbl$total_hits,
-          summary_tbl$Gene.symbol),
-    , drop = FALSE
-  ]
-  
-  # Matrices presencia/ausencia por dataset (útil para intersecciones)
-  make_presence <- function(long_df, direction_label) {
-    if (nrow(long_df) == 0) return(NULL)
-    ds <- unique(long_df$dataset)
-    g  <- unique(long_df$Gene.symbol)
-    m  <- matrix(FALSE, nrow = length(g), ncol = length(ds),
-                 dimnames = list(g, ds))
-    idx <- cbind(match(long_df$Gene.symbol, g), match(long_df$dataset, ds))
-    m[idx] <- TRUE
-    attr(m, "direction") <- direction_label
-    m
-  }
-  
-  pres_up   <- make_presence(up_long,   "up")
-  pres_down <- make_presence(down_long, "down")
-  
-  list(
-    long      = long_all,     # por muestra/dataset-dirección-rank
-    summary   = summary_tbl,  # por gen: conteos y score
-    presence  = list(up = pres_up, down = pres_down),
-    params    = list(keep_top = keep_top, min_datasets = min_datasets)
-  )
+  out$p_adj <- p.adjust(out$p_raw, method = method)
+  out <- out[order(out$p_adj, out$p_raw), , drop = FALSE]
+  out$rank_adj <- rank(out$p_adj, ties.method = "average")
+  out
 }
 
-# -------------------------
-# USO
-# -------------------------
-geo_degs <- build_geo_degs_object(
-  rank_lists_up   = rank_lists_up,
-  rank_lists_down = rank_lists_down,
-  keep_top        = NULL,  # o 2000 si quieres top-2000 por dataset
-  min_datasets    = 1      # o 2/3 para genes más consistentes
-)
+merge_rra_up_down <- function(rra_up, rra_down, method = "BH") {
+  up   <- adjust_rra_no_filter(rra_up, method = method)
+  down <- adjust_rra_no_filter(rra_down, method = method)
+  
+  up$direction   <- "up"
+  down$direction <- "down"
+  
+  geo_rra <- rbind(up, down)
+  geo_rra <- geo_rra[order(geo_rra$rank_adj, geo_rra$p_adj, geo_rra$p_raw), ]
+  
+  rownames(geo_rra) <- NULL
+  geo_rra
+}
 
-# Genes “más consistentes” en el GEO meta (según score simple)
-head(geo_degs$summary, 20)
+geo_rra_all <- merge_rra_up_down(rra_up, rra_down, method = "BH")
 
-# Ver long format (para merges, overlaps, etc.)
-head(geo_degs$long)
+head(geo_rra_all)
+table(geo_rra_all$direction)
 
-# # 9) correr RRA
-# # UP-regulated meta-set
-# rra_up <- RobustRankAggreg::aggregateRanks(
-#   glist = rank_lists_up,
-#   full  = TRUE   # para tener ranking en todo el universo posible
-# )
-
-# # DOWN-regulated meta-set
-# rra_down <- RobustRankAggreg::aggregateRanks(
-#   glist = rank_lists_down,
-#   full  = TRUE
-# )
+saveRDS(geo_rra_all, file = "GEO_ovarian_cancer_RRA_results.rds")
+write.table(geo_rra_all,
+								file = "GEO_ovarian_cancer_RRA_results.tsv",
+								sep  = "\t",
+								row.names = FALSE,
+								quote = FALSE)
 
 
 # adjust_rra <- function(rra_tbl, method = "BH", alpha = 0.05) {
