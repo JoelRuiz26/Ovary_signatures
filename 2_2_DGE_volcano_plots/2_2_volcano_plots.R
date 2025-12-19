@@ -21,17 +21,22 @@ out_dir <- file.path(base_dir, "2_2_DGE_volcano_plots")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 adenosine_genes <- unique(c(
-  # Receptores (human HGNC)
-  "ADORA1","ADORA2A","ADORA2B","ADORA3",
+  # Receptores
+  "ADORA1", "ADORA2A", "ADORA2B", "ADORA3",
   
-  # Transportadores (familias típicas)
-  "SLC28A1","SLC28A2","SLC28A3",   # CNTs
-  "SLC29A1","SLC29A2","SLC29A3","SLC29A4",  # ENTs
+  # Transportadores (solo los mencionados en el documento)
+  "SLC28A1",  # CNT
+  "SLC29A1",  # ENT
   
-  # Enzimas / ectoenzimas relevantes
-  "NT5E","ENTPD1","DPP4","ADK",
-  "ADA","ADA2","CECR1"  # ADA2 ~ CECR1 (alias frecuente)
+  # Enzimas
+  "NT5E",     # CD73
+  "ENTPD1",   # CD39
+  "DPP4",     # CD26
+  "ADK",      # Adenosine kinase
+  "ADA",      # Adenosine deaminase (ADA1 en el documento)
+  "ADA2"      # Adenosine deaminase 2
 ))
+
 
 
 padj_cut <- 0.05
