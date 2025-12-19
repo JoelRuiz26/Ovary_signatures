@@ -78,9 +78,9 @@ geo_sig <- geo_to_signed(GEO)
 
 # ===================== VENN LIST ===================== #
 venn_list <- list(
-  "TCGA (ovary_GTEX_control)" = unique(raw_sig$gene),
-  "TCGA (Reference_control)"  = unique(ae_sig$gene),
-  "GEO"                       = unique(geo_sig$gene)
+  "TCGA\n(ovary_GTEX_control)" = unique(raw_sig$gene),
+  "TCGA\n(Reference_control)"  = unique(ae_sig$gene),
+  "GEO"                        = unique(geo_sig$gene)
 )
 
 # ===================== VENN PLOT ===================== #
