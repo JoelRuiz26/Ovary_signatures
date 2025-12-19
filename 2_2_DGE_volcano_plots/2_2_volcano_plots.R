@@ -20,11 +20,24 @@ paths <- list(
 out_dir <- file.path(base_dir, "2_2_DGE_volcano_plots")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-adenosine_genes <- c(
-  "ADORA1","ADORA2A","ADORA2B","ADORA3",
-  "ENTPD1","NT5E","ADA","ADK","PNP",
-  "SLC29A1","CD38","ENPP1"
-)
+adenosine_genes <- unique(c(
+  # Receptores
+  "ADORA1", "ADORA2A", "ADORA2B", "ADORA3",
+  
+  # Transportadores (solo los mencionados en el documento)
+  "SLC28A1",  # CNT
+  "SLC29A1",  # ENT
+  
+  # Enzimas
+  "NT5E",     # CD73
+  "ENTPD1",   # CD39
+  "DPP4",     # CD26
+  "ADK",      # Adenosine kinase
+  "ADA",      # Adenosine deaminase (ADA1 en el documento)
+  "ADA2"      # Adenosine deaminase 2
+))
+
+
 
 padj_cut <- 0.05
 lfc_cut  <- 1
@@ -80,7 +93,11 @@ prep_df <- function(df) {
 
 make_volcano <- function(df, subtitle, out_pdf) {
   
-  ad_df <- df %>% filter(is_adenosine_DE)
+  ad_df <- df %>%
+    filter(is_adenosine_DE) %>%
+    group_by(Gene) %>%
+    slice_max(order_by = neglog10, n = 1, with_ties = FALSE) %>%
+    ungroup()
   
   p <- ggplot(df, aes(log2FoldChange, neglog10)) +
     geom_point(aes(color = Type), size = 0.8, alpha = 0.75) +
