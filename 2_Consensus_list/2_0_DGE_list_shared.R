@@ -76,48 +76,15 @@ raw_sig <- deseq_to_signed(DE_raw, "TCGA (ovary_GTEX_control)")
 ae_sig  <- deseq_to_signed(DE_ae,  "TCGA (Reference_control)")
 geo_sig <- geo_to_signed(GEO)
 
-# ===================== VENN LIST ===================== #
-venn_list <- list(
-  "TCGA\n(ovary_GTEX_control)"      = unique(raw_sig$gene),
-  "TCGA\n(Reference_control)"       = unique(ae_sig$gene),
-  "GEO\n(6 datasets)"               = unique(geo_sig$gene)
-)
-
-
-# ===================== VENN PLOT ===================== #
-venn_plot <- ggvenn(
-  venn_list,
-  fill_color     = c("#7A8DB8", "#F1E27C", "#7FC97F"),  # paper-grade palette
-  fill_alpha     = 0.55,
-  stroke_size    = 1,
-  set_name_size  = 5,
-  text_size      = 6,
-  show_percentage = FALSE
-) +
-  labs(
-    title = "Ovarian cancer: significant genes across databases"
-  ) +
-  coord_fixed() +
-  theme_classic(base_size = 14) +
-  theme(
-    axis.line  = element_blank(),
-    axis.text  = element_blank(),
-    axis.ticks = element_blank(),
-    axis.title = element_blank(),
-    plot.title  = element_text(face = "bold", hjust = 0.5, margin = margin(b = 18)),
-    plot.margin = margin(15, 20, 15, 20)
-  )
-
-out_pdf <- file.path(out_dir, "2_0_1_venn_TCGA_GEO.pdf")
-ggsave(out_pdf, venn_plot, width = 8, height = 6.5)
-
-# ===================== CONSENSUS GENE LIST ===================== #
+# ===================== CONSENSUS GENE LIST (build FIRST) ===================== #
+# Concordant in >=2 sources (up in >=2 OR down in >=2), among significant genes
 consensus_genes <- bind_rows(raw_sig, ae_sig, geo_sig) %>%
+  distinct(gene, source, direction) %>%   # important: one vote per source
   group_by(gene) %>%
   summarise(
     n_sources = n_distinct(source),
-    n_up      = sum(direction == "up"),
-    n_down    = sum(direction == "down"),
+    n_up      = n_distinct(source[direction == "up"]),
+    n_down    = n_distinct(source[direction == "down"]),
     consensus_direction = case_when(
       n_up   >= 2 ~ "up",
       n_down >= 2 ~ "down",
@@ -130,6 +97,45 @@ consensus_genes <- bind_rows(raw_sig, ae_sig, geo_sig) %>%
 
 out_genes <- file.path(out_dir, "2_0_1_genes_concordant.tsv")
 write_tsv(consensus_genes, out_genes)
+
+# ===================== VENN LIST (NOW concordant + significant) ===================== #
+# Restrict each set to genes that are:
+# - significant in that source (raw_sig / ae_sig / geo_sig already enforce this)
+# - AND belong to the concordant consensus set (consensus_genes)
+cons_set <- unique(consensus_genes$gene)
+
+venn_list <- list(
+  "TCGA\n(ovary_GTEX_control)" = sort(unique(raw_sig$gene[raw_sig$gene %in% cons_set])),
+  "TCGA\n(Reference_control)"  = sort(unique(ae_sig$gene[ae_sig$gene %in% cons_set])),
+  "GEO\n(6 datasets)"          = sort(unique(geo_sig$gene[geo_sig$gene %in% cons_set]))
+)
+
+# ===================== VENN PLOT ===================== #
+venn_plot <- ggvenn(
+  venn_list,
+  fill_color      = c("#7A8DB8", "#F1E27C", "#7FC97F"),  # paper-grade palette
+  fill_alpha      = 0.55,
+  stroke_size     = 1,
+  set_name_size   = 5,
+  text_size       = 6,
+  show_percentage = FALSE
+) +
+  labs(
+    title = "Ovarian cancer: significant genes across databases"
+  ) +
+  coord_fixed() +
+  theme_classic(base_size = 14) +
+  theme(
+    axis.line   = element_blank(),
+    axis.text   = element_blank(),
+    axis.ticks  = element_blank(),
+    axis.title  = element_blank(),
+    plot.title  = element_text(face = "bold", hjust = 0.5, margin = margin(b = 18)),
+    plot.margin = margin(15, 20, 15, 20)
+  )
+
+out_pdf <- file.path(out_dir, "2_0_1_venn_TCGA_GEO.pdf")
+ggsave(out_pdf, venn_plot, width = 8, height = 6.5)
 
 cat("Done.\n")
 cat("Venn diagram saved to: ", out_pdf, "\n", sep = "")
