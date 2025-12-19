@@ -78,9 +78,9 @@ geo_sig <- geo_to_signed(GEO)
 
 # ===================== VENN LIST ===================== #
 venn_list <- list(
-  "TCGA\n(ovary_GTEX_control)" = unique(raw_sig$gene),
-  "TCGA\n(Reference_control)"  = unique(ae_sig$gene),
-  "GEO"                        = unique(geo_sig$gene)
+  "TCGA\n\u2009(ovary_GTEX_control)" = unique(raw_sig$gene),
+  "TCGA\n\u2009(Reference_control)"  = unique(ae_sig$gene),
+  "GEO"                               = unique(geo_sig$gene)
 )
 
 
@@ -90,7 +90,7 @@ venn_plot <- ggvenn(
   fill_color     = c("#7A8DB8", "#F1E27C", "#7FC97F"),  # paper-grade palette
   fill_alpha     = 0.55,
   stroke_size    = 1,
-  set_name_size  = 6,
+  set_name_size  = 5,
   text_size      = 6,
   show_percentage = FALSE
 ) +
@@ -104,7 +104,7 @@ venn_plot <- ggvenn(
     axis.text  = element_blank(),
     axis.ticks = element_blank(),
     axis.title = element_blank(),
-    plot.title = element_text(face = "bold", hjust = 0.5),
+    plot.title  = element_text(face = "bold", hjust = 0.5, margin = margin(b = 18)),
     plot.margin = margin(15, 20, 15, 20)
   )
 
