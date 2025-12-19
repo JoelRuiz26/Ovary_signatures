@@ -9,6 +9,20 @@ suppressPackageStartupMessages({
 
 options(stringsAsFactors = FALSE)
 
+# ============================================================
+# Goal
+# 1) Venn diagram of significant genes:
+#    - DESeq2: p < 0.01 AND |log2FC| > 1
+#    - GEO RRA: p_raw < 0.01 (direction already provided)
+#    (Same labels, title, colors, and output filenames.)
+#
+# 2) Table of genes present in >=2 sources with:
+#    gene, n_sources, n_up, n_down, consensus_direction
+#    consensus_direction = "up" if n_up > n_down
+#                        = "down" if n_down > n_up
+#                        = "none" if tie (common when gene appears in exactly 2 sources with opposite directions)
+# ============================================================
+
 # ===================== CONFIG ===================== #
 base_dir <- "~/Ovary_signatures"
 
@@ -31,9 +45,7 @@ DE_ae  <- read_rds_safe(paths$ae_deseq2)
 GEO    <- read_rds_safe(paths$geo_rra)
 
 # ===================== THRESHOLDS ===================== #
-# Circle membership: p < 0.01 (ALL significant genes)
 P_CUTOFF   <- 0.01
-# Direction is defined only if |log2FC| > 1 for DESeq2
 LFC_CUTOFF <- 1
 
 # ===================== HELPERS ===================== #
@@ -43,25 +55,11 @@ clean_gene <- function(x) {
   x
 }
 
-# Return ALL significant genes (p < cutoff), gene-only (for circle size)
-deseq_sig_genes_only <- function(df) {
-  df %>%
-    mutate(gene = clean_gene(Symbol)) %>%
-    filter(!is.na(gene), !is.na(pvalue), pvalue < P_CUTOFF) %>%
-    distinct(gene) %>%
-    pull(gene)
-}
+# ===================== BUILD "SIGNED" LISTS (WHAT DEFINES SIGNIFICANCE) ===================== #
+# These are the ONLY genes that will go into the Venn.
+# (So Venn counts will match the logic used in the table.)
 
-geo_sig_genes_only <- function(df) {
-  df %>%
-    mutate(gene = clean_gene(Gene.symbol)) %>%
-    filter(!is.na(gene), !is.na(p_raw), p_raw < P_CUTOFF) %>%
-    distinct(gene) %>%
-    pull(gene)
-}
-
-# Return significant genes WITH a well-defined direction (used for concordance logic)
-deseq_to_signed <- function(df, source_name) {
+deseq_sig_signed <- function(df, source_name) {
   df %>%
     mutate(
       gene = clean_gene(Symbol),
@@ -72,11 +70,11 @@ deseq_to_signed <- function(df, source_name) {
       )
     ) %>%
     filter(!is.na(gene), !is.na(direction)) %>%
-    distinct(gene, direction) %>%
+    distinct(gene, direction) %>%  # keep both if a gene truly appears with both directions (rare)
     mutate(source = source_name)
 }
 
-geo_to_signed <- function(df) {
+geo_sig_signed <- function(df) {
   df %>%
     mutate(
       gene = clean_gene(Gene.symbol),
@@ -91,82 +89,58 @@ geo_to_signed <- function(df) {
     mutate(source = "GEO")
 }
 
-# Build:
-# (A) full significant sets (circle membership)
-raw_all <- deseq_sig_genes_only(DE_raw)
-ae_all  <- deseq_sig_genes_only(DE_ae)
-geo_all <- geo_sig_genes_only(GEO)
+raw_sig <- deseq_sig_signed(DE_raw, "TCGA (ovary_GTEX_control)")
+ae_sig  <- deseq_sig_signed(DE_ae,  "TCGA (Reference_control)")
+geo_sig <- geo_sig_signed(GEO)
 
-# (B) directed significant tables (for concordance)
-raw_sig <- deseq_to_signed(DE_raw, "TCGA (ovary_GTEX_control)")
-ae_sig  <- deseq_to_signed(DE_ae,  "TCGA (Reference_control)")
-geo_sig <- geo_to_signed(GEO)
+# ===================== TABLE: GENES PRESENT IN >=2 SOURCES ===================== #
+# One vote per source per gene:
+# - If a gene has multiple rows within a source (shouldn't happen often), we collapse to a single direction vote per source.
+#   If it conflicts within the same source, we set that source's vote to NA (excluded from up/down voting).
+collapse_to_one_vote_per_source <- function(df) {
+  df %>%
+    group_by(gene, source) %>%
+    summarise(
+      dir = if (n_distinct(direction) == 1) first(direction) else NA_character_,
+      .groups = "drop"
+    ) %>%
+    filter(!is.na(dir)) %>%
+    rename(direction = dir)
+}
 
-# ===================== CONSENSUS GENE LIST (WRITE OUTPUT) ===================== #
-# Concordant direction in >=2 sources (up in >=2 OR down in >=2)
-consensus_genes <- bind_rows(raw_sig, ae_sig, geo_sig) %>%
-  distinct(gene, source, direction) %>%   # one vote per source
+votes <- bind_rows(raw_sig, ae_sig, geo_sig) %>%
+  collapse_to_one_vote_per_source()
+
+consensus_genes <- votes %>%
   group_by(gene) %>%
   summarise(
     n_sources = n_distinct(source),
-    n_up      = n_distinct(source[direction == "up"]),
-    n_down    = n_distinct(source[direction == "down"]),
+    n_up      = sum(direction == "up"),
+    n_down    = sum(direction == "down"),
     consensus_direction = case_when(
-      n_up   >= 2 ~ "up",
-      n_down >= 2 ~ "down",
-      TRUE ~ NA_character_
+      n_up   > n_down ~ "up",
+      n_down > n_up   ~ "down",
+      TRUE            ~ "none"   # tie (e.g., 1 up vs 1 down)
     ),
     .groups = "drop"
   ) %>%
-  filter(n_sources >= 2, !is.na(consensus_direction)) %>%
+  filter(n_sources >= 2) %>%
   arrange(desc(n_sources), gene)
 
+# Output table (KEEP SAME FILENAME)
 out_genes <- file.path(out_dir, "2_0_1_genes_concordant.tsv")
 write_tsv(consensus_genes, out_genes)
 
-# ===================== VENN SETS: FULL CIRCLES, CONCORDANT OVERLAPS ===================== #
-# Trick for ggvenn:
-# - Keep concordant genes as the SAME ID across sources => they intersect.
-# - Rename non-concordant (or no-direction) genes per source => they stay in the circle but do NOT intersect.
-
-# Consensus direction lookup: gene -> consensus_direction
-cons_dir <- setNames(consensus_genes$consensus_direction, consensus_genes$gene)
-
-# Per-source direction lookup (only when direction is uniquely defined)
-make_dir_map <- function(sig_df) {
-  sig_df %>%
-    group_by(gene) %>%
-    summarise(dir = ifelse(n_distinct(direction) == 1, first(direction), NA_character_), .groups = "drop") %>%
-    { setNames(.$dir, .$gene) }
-}
-
-raw_dir <- make_dir_map(raw_sig)
-ae_dir  <- make_dir_map(ae_sig)
-geo_dir <- make_dir_map(geo_sig)
-
-# Build plot IDs:
-# If gene is concordant AND this source matches the consensus direction => keep "GENE"
-# Else => rename to "GENE__<TAG>" (still counted in the circle, but won't overlap)
-make_plot_ids <- function(gene_vec, dir_map, tag) {
-  vapply(gene_vec, function(g) {
-    cd <- unname(cons_dir[g])
-    sd <- unname(dir_map[g])
-    if (!is.na(cd) && !is.na(sd) && sd == cd) g else paste0(g, "__", tag)
-  }, character(1))
-}
-
-
-raw_plot <- unique(make_plot_ids(raw_all, raw_dir, "RAW"))
-ae_plot  <- unique(make_plot_ids(ae_all,  ae_dir,  "AE"))
-geo_plot <- unique(make_plot_ids(geo_all, geo_dir, "GEO"))
+# ===================== VENN: SIGNIFICANT GENES ONLY (MATCHING THE SAME RULES) ===================== #
+# Venn uses only presence/absence of gene symbols in each significant list.
+# (This will now be consistent with the "votes" universe above.)
 
 venn_list <- list(
-  "TCGA\n(ovary_GTEX_control)" = raw_plot,
-  "TCGA\n(Reference_control)"  = ae_plot,
-  "GEO\n(6 datasets)"          = geo_plot
+  "TCGA\n(ovary_GTEX_control)" = sort(unique(raw_sig$gene)),
+  "TCGA\n(Reference_control)"  = sort(unique(ae_sig$gene)),
+  "GEO\n(6 datasets)"          = sort(unique(geo_sig$gene))
 )
 
-# ===================== VENN PLOT (UNCHANGED TITLES / OUTPUT NAMES) ===================== #
 venn_plot <- ggvenn(
   venn_list,
   fill_color      = c("#7A8DB8", "#F1E27C", "#7FC97F"),
@@ -190,6 +164,7 @@ venn_plot <- ggvenn(
     plot.margin = margin(15, 20, 15, 20)
   )
 
+# Output Venn (KEEP SAME FILENAME)
 out_pdf <- file.path(out_dir, "2_0_1_venn_TCGA_GEO.pdf")
 ggsave(out_pdf, venn_plot, width = 8, height = 6.5)
 
