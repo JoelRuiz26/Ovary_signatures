@@ -78,9 +78,9 @@ geo_sig <- geo_to_signed(GEO)
 
 # ===================== VENN LIST ===================== #
 venn_list <- list(
-  "TCGA\n\u2009(ovary_GTEX_control)" = unique(raw_sig$gene),
-  "TCGA\n\u2009(Reference_control)"  = unique(ae_sig$gene),
-  "GEO"                               = unique(geo_sig$gene)
+  "TCGA\n(ovary_GTEX_control)"      = unique(raw_sig$gene),
+  "TCGA\n(Reference_control)"       = unique(ae_sig$gene),
+  "GEO\n(6 datasets)"               = unique(geo_sig$gene)
 )
 
 
@@ -95,7 +95,7 @@ venn_plot <- ggvenn(
   show_percentage = FALSE
 ) +
   labs(
-    title = "Ovarian cancer: significant genes across datasets"
+    title = "Ovarian cancer: significant genes across databases"
   ) +
   coord_fixed() +
   theme_classic(base_size = 14) +
