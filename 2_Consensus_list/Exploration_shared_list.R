@@ -2,15 +2,16 @@ library(vroom)
 library(dplyr)
 
 DGE_list_shared <- vroom("/home/jruiz/Ovary_signatures/2_Consensus_list/2_0_1_genes_concordant.tsv")
+#table(DGE_list_shared$consensus_direction)
+#down none   up 
+#1934  541 2464
 
 adenosine_genes <- unique(c(
   # Receptores
   "ADORA1", "ADORA2A", "ADORA2B", "ADORA3",
-  
   # Transportadores 
   "SLC28A1",  # CNT
   "SLC29A1",  # ENT
-  
   # Enzimas
   "NT5E",     # CD73
   "ENTPD1",   # CD39
@@ -49,7 +50,6 @@ missing_adenosine
 #[1] "ADORA1"  "ADORA2B" "SLC28A1" "SLC29A1"
 #[5] "NT5E"    "ENTPD1"  "DPP4"    "ADK"    
 #[9] "ADA2" 
-
 
 
 library(dplyr)
@@ -98,5 +98,6 @@ adenosine_hits_geo
 #12      ADORA3 0.99512195     1   5219.0      down
 #13      ADORA1 1.00000000     1   7453.5        up
 #14         ADK 1.00000000     1   7453.5        up
+
 
 
