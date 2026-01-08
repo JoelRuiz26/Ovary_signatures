@@ -16,13 +16,12 @@ options(stringsAsFactors = FALSE)
 base_dir <- "~/Ovary_signatures"
 
 paths <- list(
-  raw = file.path(base_dir, "0_DGE_raw",         "DE_full_OVARY_DESeq2.rds"),
-  ae  = file.path(base_dir, "1_DGE_autoencoder", "DE_full_OVARY_DESeq2.rds")
+  raw = file.path(base_dir, "0_DGE_GTEx", "DE_full_OVARY_DESeq2_GTEx.rds"),
+  ae  = file.path(base_dir, "1_DGE_AE",   "DE_full_OVARY_DESeq2_AE.rds")
 )
 
 # output folder (Reactome)
-out_dir <- file.path(base_dir, "3_GSEA", "3_GSEA_Reactome_STAT")
-dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+out_dir <- file.path(base_dir, "4_GSEA", "4_0_REACTOME")
 
 read_rds_safe <- function(p) {
   if (!file.exists(p)) stop("No existe el archivo: ", p)
@@ -62,7 +61,7 @@ make_rank_stat <- function(df, stat_col = "stat", id_col = "GeneID") {
   geneList
 }
 
-run_gsea_reactome <- function(geneList, p_cut = 0.05) {
+run_gsea_reactome <- function(geneList, p_cut = 0.01) {
   gsea <- GSEA(
     geneList     = geneList,
     TERM2GENE    = TERM2GENE_REACT,
@@ -79,7 +78,7 @@ run_gsea_reactome <- function(geneList, p_cut = 0.05) {
   list(gsea = gsea, full = gsea_df, sig = gsea_sig)
 }
 
-plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.05) {
+plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.01) {
   if (nrow(gsea_df) == 0) {
     message("No hay resultados para plot: ", subtitle)
     return(invisible(NULL))
@@ -87,9 +86,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
   
   dfp <- gsea_df %>%
     filter(!is.na(NES), !is.na(p.adjust), p.adjust > 0) %>%
-    mutate(
-      neglog10_fdr = -log10(p.adjust)
-    ) %>%
+    mutate(neglog10_fdr = -log10(p.adjust)) %>%
     filter(p.adjust < p_cut)
   
   if (nrow(dfp) == 0) {
@@ -109,7 +106,6 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
   
   top <- bind_rows(top_up, top_down) %>%
     mutate(
-      # limpiar prefijo típico de MSigDB Reactome si aparece: "REACTOME_"
       Description = gsub("^REACTOME_", "", Description)
     ) %>%
     arrange(NES) %>%
@@ -124,6 +120,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     geom_point(alpha = 0.95, shape = 16) +
     scale_color_viridis_c(name = expression(-log[10]("FDR"))) +
     scale_size_continuous(name = "|NES|") +
+    scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
     labs(
       title = main_title,
       subtitle = subtitle,
@@ -134,51 +131,45 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     theme(
       panel.grid.minor = element_blank(),
       legend.box = "vertical",
-      plot.subtitle = element_text(size = 10)
+      plot.subtitle = element_text(size = 10),
+      axis.text.y = element_text(face = "bold")
     )
   
-  ggsave(out_pdf, p, width = 11, height = 8.5, device = cairo_pdf)
+  # ====== Guardado PDF + PNG 600 DPI (igual que KEGG) ====== #
+  ggsave(out_pdf, p,
+         width = 7, height = 8.5, units = "in",
+         device = cairo_pdf)
+  
+  out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
+  ggsave(out_png, p,
+         width = 7, height = 8.5, units = "in",
+         dpi = 600)
+  
   invisible(p)
 }
 
 save_outputs <- function(prefix, subtitle, res_list) {
-  full_tsv <- file.path(out_dir, paste0(prefix, "_Reactome_STAT_FULL.tsv"))
-  sig_tsv  <- file.path(out_dir, paste0(prefix, "_Reactome_STAT_SIG_FDR0.05.tsv"))
-  pdf_top  <- file.path(out_dir, paste0(prefix, "_Reactome_STAT_top20_up_down.pdf"))
   
-  write_tsv(res_list$full, full_tsv)
-  write_tsv(res_list$sig,  sig_tsv)
+  write_tsv(res_list$full,
+            file.path(out_dir, paste0(prefix, "_REACTOME_FULL.tsv")))
+  write_tsv(res_list$sig,
+            file.path(out_dir, paste0(prefix, "_REACTOME_SIG_0.01.tsv")))
   
   plot_top20_up_down(
     gsea_df    = res_list$full,
     main_title = "GSEA Reactome pathways",
     subtitle   = subtitle,
-    out_pdf    = pdf_top,
+    out_pdf    = file.path(out_dir, paste0(prefix, "_REACTOME_top20.pdf")),
     p_cut      = 0.05
   )
-  
-  message("OK: ", prefix)
-  message("  FULL: ", full_tsv)
-  message("  SIG : ", sig_tsv)
-  message("  PDF : ", pdf_top)
 }
 
-# ===================== RUN (RAW) ===================== #
-geneList_raw <- make_rank_stat(DE_raw, stat_col = "stat", id_col = "GeneID")
-res_raw <- run_gsea_reactome(geneList_raw, p_cut = 0.05)
-save_outputs(
-  prefix   = "Ovary_control_GTEx",
-  subtitle = "Ovary tumors vs ovary control GTEx",
-  res_list = res_raw
-)
+# ===================== RUN RAW ===================== #
+res_raw <- run_gsea_reactome(make_rank_stat(DE_raw, stat_col = "stat", id_col = "GeneID"))
+save_outputs("GTEx", "Ovary tumors vs ovary control GTEx", res_raw)
 
-# ===================== RUN (REFERENCE CONTROL) ===================== #
-geneList_ae <- make_rank_stat(DE_ae, stat_col = "stat", id_col = "GeneID")
-res_ae <- run_gsea_reactome(geneList_ae, p_cut = 0.05)
-save_outputs(
-  prefix   = "Reference_control",
-  subtitle = "Ovary tumors vs reference control",
-  res_list = res_ae
-)
+# ===================== RUN REFERENCE ===================== #
+res_ae <- run_gsea_reactome(make_rank_stat(DE_ae, stat_col = "stat", id_col = "GeneID"))
+save_outputs("AE", "Ovary tumors vs reference control", res_ae)
 
-message("\nDone. Outputs en: ", out_dir)
+message("\nREACTOME GSEA DONE")
