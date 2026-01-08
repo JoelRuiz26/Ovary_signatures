@@ -95,6 +95,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     geom_point(shape = 16, alpha = 0.95) +
     scale_color_viridis_c(name = expression(-log[10]("FDR"))) +
     scale_size_continuous(name = "|NES|") +
+    scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
     labs(
       title = main_title,
       subtitle = subtitle,
