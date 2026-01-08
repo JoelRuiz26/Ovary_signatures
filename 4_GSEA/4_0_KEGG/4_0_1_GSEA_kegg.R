@@ -102,16 +102,19 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
       y = NULL
     ) +
     theme_bw(base_size = 11) +
-    theme(panel.grid.minor = element_blank())
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(face = "bold")
+    )
   
   # ====== CAMBIOS MÍNIMOS AQUÍ ====== #
   ggsave(out_pdf, p,
-         width = 11, height = 8.5, units = "in",
+         width = 10, height = 8.5, units = "in",
          device = cairo_pdf)
   
   out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
   ggsave(out_png, p,
-         width = 11, height = 8.5, units = "in",
+         width = 10, height = 8.5, units = "in",
          dpi = 600)
 }
 
@@ -133,7 +136,7 @@ save_outputs <- function(prefix, subtitle, res_list) {
 # ===================== RUN RAW ===================== #
 res_raw <- run_gsea_kegg(make_rank_stat(DE_raw))
 save_outputs("GTEx", "Ovary tumors vs ovary control GTEx", res_raw)
-
+ls
 # ===================== RUN REFERENCE ===================== #
 res_ae <- run_gsea_kegg(make_rank_stat(DE_ae))
 save_outputs("AE", "Ovary tumors vs reference control", res_ae)
