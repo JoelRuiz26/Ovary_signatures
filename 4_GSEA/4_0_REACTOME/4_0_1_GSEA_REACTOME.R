@@ -8,6 +8,7 @@ suppressPackageStartupMessages({
   library(clusterProfiler)
   library(enrichplot)
   library(msigdbr)
+  library(stringr)   # <-- CAMBIO MÍNIMO: para str_wrap()
 })
 
 options(stringsAsFactors = FALSE)
@@ -22,6 +23,7 @@ paths <- list(
 
 # output folder (Reactome)
 out_dir <- file.path(base_dir, "4_GSEA", "4_0_REACTOME")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 read_rds_safe <- function(p) {
   if (!file.exists(p)) stop("No existe el archivo: ", p)
@@ -120,6 +122,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     geom_point(alpha = 0.95, shape = 16) +
     scale_color_viridis_c(name = expression(-log[10]("FDR"))) +
     scale_size_continuous(name = "|NES|") +
+    scale_y_discrete(labels = function(x) str_wrap(x, width = 40)) +  # <-- CAMBIO MÍNIMO: wrap para que GTEx no se vea “chico”
     scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
     labs(
       title = main_title,
@@ -135,7 +138,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
       axis.text.y = element_text(face = "bold")
     )
   
-  # ====== Guardado PDF + PNG 600 DPI (igual que KEGG) ====== #
+  # ====== Guardado PDF + PNG 600 DPI ====== #
   ggsave(out_pdf, p,
          width = 9, height = 8.5, units = "in",
          device = cairo_pdf)
@@ -160,7 +163,7 @@ save_outputs <- function(prefix, subtitle, res_list) {
     main_title = "GSEA Reactome pathways",
     subtitle   = subtitle,
     out_pdf    = file.path(out_dir, paste0(prefix, "_REACTOME_top20.pdf")),
-    p_cut      = 0.05
+    p_cut      = 0.01
   )
 }
 
