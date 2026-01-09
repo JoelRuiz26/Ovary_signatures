@@ -11,22 +11,33 @@ suppressPackageStartupMessages({
 options(stringsAsFactors = FALSE)
 
 # ===================== CONFIG ===================== #
-base_dir <- "~/Ovary_signatures/3_GSEA"
+base_dir <- "~/Ovary_signatures/4_GSEA"
 
+# Carpeta reales (según tu tree)
 dbs <- list(
-  KEGG        = "3_GSEA_KEGG_STAT",
-  Reactome    = "3_GSEA_Reactome_STAT",
-  WikiPathways= "3_GSEA_WikiPathways_STAT"
+  KEGG         = "4_0_KEGG",
+  Reactome     = "4_0_REACTOME",
+  WikiPathways = "4_0_WIKIPATHWAYS"
 )
 
 # ===================== HELPERS ===================== #
 load_sig <- function(dir, prefix) {
   
+  # 1) Primero intenta con tu naming actual: *_SIG_0.01.tsv
   files <- list.files(
     path = dir,
-    pattern = paste0("^", prefix, ".*_SIG_FDR0.05.tsv$"),
+    pattern = paste0("^", prefix, ".*_SIG_0\\.01\\.tsv$"),
     full.names = TRUE
   )
+  
+  # 2) Fallback por compatibilidad: *_0.01.tsv (ej. Reactome antiguo)
+  if (length(files) == 0) {
+    files <- list.files(
+      path = dir,
+      pattern = paste0("^", prefix, ".*_0\\.01\\.tsv$"),
+      full.names = TRUE
+    )
+  }
   
   if (length(files) == 0) {
     stop("No se encontró archivo SIG para: ", prefix, " en ", dir)
@@ -88,7 +99,12 @@ make_venn <- function(terms1, terms2, title_txt, subtitle_txt, out_pdf) {
       plot.subtitle = ggplot2::element_text(hjust = 0.5)
     )
   
+  # PDF
   ggplot2::ggsave(out_pdf, p, width = 6, height = 6)
+  
+  # PNG 600 DPI
+  out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
+  ggplot2::ggsave(out_png, p, width = 6, height = 6, dpi = 600)
 }
 
 plot_top20_shared <- function(df, title, subtitle, out_pdf) {
@@ -128,9 +144,17 @@ plot_top20_shared <- function(df, title, subtitle, out_pdf) {
       y = NULL
     ) +
     ggplot2::theme_bw(base_size = 11) +
-    ggplot2::theme(panel.grid.minor = ggplot2::element_blank())
+    ggplot2::theme(
+      panel.grid.minor = ggplot2::element_blank(),
+      axis.text.y = ggplot2::element_text(face = "bold")
+    )
   
+  # PDF
   ggplot2::ggsave(out_pdf, p, width = 11, height = 8.5)
+  
+  # PNG 600 DPI
+  out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
+  ggplot2::ggsave(out_png, p, width = 11, height = 8.5, dpi = 600)
 }
 
 # ===================== MAIN LOOP ===================== #
@@ -142,8 +166,18 @@ for (db in names(dbs)) {
   shared_dir <- file.path(db_dir, "shared")
   dir.create(shared_dir, showWarnings = FALSE)
   
-  ovary <- load_sig(db_dir, "Ovary_control_GTEx") %>% clean_description(db) %>% get_direction()
-  ref   <- load_sig(db_dir, "Reference_control")  %>% clean_description(db) %>% get_direction()
+  ovary <- load_sig(db_dir, "GTEx") %>%
+    clean_description(db) %>%   # <- NO: esto pasa db como df
+    get_direction()
+  
+  # CORRECCIÓN: clean_description(., db)
+  ovary <- load_sig(db_dir, "GTEx") %>%
+    clean_description(., db) %>%
+    get_direction()
+  
+  ref <- load_sig(db_dir, "AE") %>%
+    clean_description(., db) %>%
+    get_direction()
   
   # ---- compartidos (SIN exigir misma dirección) ----
   shared_terms <- ovary %>%
@@ -161,7 +195,7 @@ for (db in names(dbs)) {
   
   # merged completo (útil para inspección; aquí sí verás dirección y stats de ambos)
   shared_merged <- ovary %>%
-    dplyr::inner_join(ref, by = "Description", suffix = c("_ovary", "_ref"))
+    dplyr::inner_join(ref, by = "Description", suffix = c("_GTEx", "_AE"))
   
   readr::write_tsv(
     shared_merged,
@@ -177,7 +211,7 @@ for (db in names(dbs)) {
     out_pdf = file.path(shared_dir, paste0(db, "_shared_venn.pdf"))
   )
   
-  # ---- Dotplot 1: Ovary_control_GTEx (solo compartidos) ----
+  # ---- Dotplot 1: GTEx (solo compartidos) ----
   ovary_shared <- ovary %>%
     dplyr::semi_join(shared_terms, by = "Description")
   
@@ -185,10 +219,10 @@ for (db in names(dbs)) {
     df = ovary_shared,
     title = paste("Shared", db, "pathways"),
     subtitle = "Ovary tumors vs ovary control GTEx",
-    out_pdf = file.path(shared_dir, paste0(db, "_shared_top20_up_down_Ovary_control_GTEx.pdf"))
+    out_pdf = file.path(shared_dir, paste0(db, "_shared_top20_up_down_GTEx.pdf"))
   )
   
-  # ---- Dotplot 2: Reference_control (solo compartidos) ----
+  # ---- Dotplot 2: AE (solo compartidos) ----
   ref_shared <- ref %>%
     dplyr::semi_join(shared_terms, by = "Description")
   
@@ -196,7 +230,7 @@ for (db in names(dbs)) {
     df = ref_shared,
     title = paste("Shared", db, "pathways"),
     subtitle = "Ovary tumors vs reference control",
-    out_pdf = file.path(shared_dir, paste0(db, "_shared_top20_up_down_Reference_control.pdf"))
+    out_pdf = file.path(shared_dir, paste0(db, "_shared_top20_up_down_AE.pdf"))
   )
 }
 

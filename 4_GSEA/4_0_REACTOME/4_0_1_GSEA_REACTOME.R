@@ -151,7 +151,7 @@ save_outputs <- function(prefix, subtitle, res_list) {
   write_tsv(res_list$full,
             file.path(out_dir, paste0(prefix, "_REACTOME_FULL.tsv")))
   write_tsv(res_list$sig,
-            file.path(out_dir, paste0(prefix, "_REACTOME_0.01.tsv")))
+            file.path(out_dir, paste0(prefix, "_REACTOME_SIG_0.01.tsv")))
   
   plot_top20_up_down(
     gsea_df    = res_list$full,
