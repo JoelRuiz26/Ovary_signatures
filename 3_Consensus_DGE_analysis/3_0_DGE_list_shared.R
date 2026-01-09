@@ -74,7 +74,7 @@ deseq_sig_signed <- function(df, source_name) {
 geo_sig_signed <- function(df) {
   df %>%
     mutate(
-      gene = clean_gene(Gene.symbol),
+      gene = clean_gene(gene),
       direction = tolower(trimws(direction))
     ) %>%
     filter(

@@ -15,12 +15,18 @@ options(stringsAsFactors = FALSE)
 # ===================== CONFIG ===================== #
 base_dir <- "~/Ovary_signatures"
 
+# Updated input paths (match your current structure)
 paths <- list(
-  raw = file.path(base_dir, "0_DGE_raw",         "DE_full_OVARY_DESeq2.rds"),
-  ae  = file.path(base_dir, "1_DGE_autoencoder", "DE_full_OVARY_DESeq2.rds")
+  raw = file.path(base_dir, "0_DGE_GTEx", "DE_full_OVARY_DESeq2_GTEx.rds"),
+  ae  = file.path(base_dir, "1_DGE_AE",   "DE_full_OVARY_DESeq2_AE.rds")
 )
 
-out_dir <- file.path(base_dir, "3_GSEA","3_GSEA_WikiPathways_STAT")
+# Updated output folder (consistent with 4_GSEA convention)
+out_dir <- file.path(base_dir, "4_GSEA", "4_0_WIKIPATHWAYS")
+dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
+
+# Use 0.01 as requested/consistent with your other scripts
+p_cut <- 0.01
 
 read_rds_safe <- function(p) {
   if (!file.exists(p)) stop("No existe el archivo: ", p)
@@ -59,7 +65,7 @@ make_rank_stat <- function(df, stat_col = "stat", id_col = "GeneID") {
   geneList
 }
 
-run_gsea_wp <- function(geneList, p_cut = 0.05) {
+run_gsea_wp <- function(geneList, p_cut = 0.01) {
   gsea <- GSEA(
     geneList     = geneList,
     TERM2GENE    = TERM2GENE_WP,
@@ -76,7 +82,7 @@ run_gsea_wp <- function(geneList, p_cut = 0.05) {
   list(gsea = gsea, full = gsea_df, sig = gsea_sig)
 }
 
-plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.05) {
+plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.01) {
   if (nrow(gsea_df) == 0) {
     message("No hay resultados para plot: ", subtitle)
     return(invisible(NULL))
@@ -131,17 +137,24 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     theme(
       panel.grid.minor = element_blank(),
       legend.box = "vertical",
-      plot.subtitle = element_text(size = 10)
+      plot.subtitle = element_text(size = 10),
+      axis.text.y = element_text(face = "bold")  # <-- negritas en renglones
     )
   
-  ggsave(out_pdf, p, width = 11, height = 8.5, device = cairo_pdf)
+  ggsave(out_pdf, p, width = 11, height = 8.5, units = "in", device = cairo_pdf)
+  
+  out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
+  ggsave(out_png, p, width = 11, height = 8.5, units = "in", dpi = 600)
+  
   invisible(p)
 }
 
-save_outputs <- function(prefix, subtitle, res_list) {
-  full_tsv <- file.path(out_dir, paste0(prefix, "_WikiPathways_STAT_FULL.tsv"))
-  sig_tsv  <- file.path(out_dir, paste0(prefix, "_WikiPathways_STAT_SIG_FDR0.05.tsv"))
-  pdf_top  <- file.path(out_dir, paste0(prefix, "_WikiPathways_STAT_top20_up_down.pdf"))
+save_outputs <- function(prefix, subtitle, res_list, p_cut = 0.01) {
+  
+  # Updated file naming to match your newer convention
+  full_tsv <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_FULL.tsv"))
+  sig_tsv  <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_SIG_0.01.tsv"))
+  pdf_top  <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_top20.pdf"))
   
   write_tsv(res_list$full, full_tsv)
   write_tsv(res_list$sig,  sig_tsv)
@@ -151,31 +164,34 @@ save_outputs <- function(prefix, subtitle, res_list) {
     main_title = "GSEA WikiPathways",
     subtitle   = subtitle,
     out_pdf    = pdf_top,
-    p_cut      = 0.05
+    p_cut      = p_cut
   )
   
   message("OK: ", prefix)
   message("  FULL: ", full_tsv)
   message("  SIG : ", sig_tsv)
   message("  PDF : ", pdf_top)
+  message("  PNG : ", sub("\\.pdf$", ".png", pdf_top, ignore.case = TRUE))
 }
 
-# ===================== RUN (RAW) ===================== #
+# ===================== RUN (RAW / GTEx) ===================== #
 geneList_raw <- make_rank_stat(DE_raw, stat_col = "stat", id_col = "GeneID")
-res_raw <- run_gsea_wp(geneList_raw, p_cut = 0.05)
+res_raw <- run_gsea_wp(geneList_raw, p_cut = p_cut)
 save_outputs(
-  prefix   = "Ovary_control_GTEx",
+  prefix   = "GTEx",
   subtitle = "Ovary tumors vs ovary control GTEx",
-  res_list = res_raw
+  res_list = res_raw,
+  p_cut    = p_cut
 )
 
-# ===================== RUN (REFERENCE CONTROL / AUTOENCODER) ===================== #
+# ===================== RUN (REFERENCE CONTROL / AE) ===================== #
 geneList_ae <- make_rank_stat(DE_ae, stat_col = "stat", id_col = "GeneID")
-res_ae <- run_gsea_wp(geneList_ae, p_cut = 0.05)
+res_ae <- run_gsea_wp(geneList_ae, p_cut = p_cut)
 save_outputs(
-  prefix   = "Reference_control",
+  prefix   = "AE",
   subtitle = "Ovary tumors vs reference control",
-  res_list = res_ae
+  res_list = res_ae,
+  p_cut    = p_cut
 )
 
-message("\nDone. Outputs en: ", out_dir)
+message("\nWIKIPATHWAYS GSEA DONE. Outputs en: ", out_dir)

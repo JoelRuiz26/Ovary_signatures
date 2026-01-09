@@ -2,12 +2,10 @@ library(vroom)
 library(dplyr)
 
 DGE_list_shared <- vroom("/home/jruiz/Ovary_signatures/3_Consensus_DGE_analysis/3_0_1_genes_concordant.tsv")
-#table(DGE_list_shared$consensus_direction)
+table(DGE_list_shared$consensus_direction)
 #down none   up
 #2032  556 2689 
 
-#down none   up 
-#1934  541 2464 
 
 adenosine_genes <- unique(c(
   # Receptores
@@ -59,16 +57,15 @@ missing_adenosine
 
 # Load GEO RRA results
 GEO <- readRDS("~/Ovary_signatures/2_DEG_GEO/GEO_ovarian_cancer_RRA_results.rds")
-nrow(GEO) #[1] 35764  #[1] 24255
-GEO_001 <- GEO %>% filter(p_adj <= 0.05)
+nrow(GEO) #[1] 35764  #[1] 20656
+GEO_001 <- GEO %>% filter(p_adj <= 0.01)
 nrow(GEO_001) #[1] 430    #0.05 = [1] 828   
-              #[1] 100    #0.05 =[1] 203
 
 # Genes FOUND in GEO RRA
 adenosine_hits_geo <- GEO %>%
-  mutate(gene_u = toupper(Gene.symbol)) %>%
+  mutate(gene_u = toupper(gene)) %>%
   filter(gene_u %in% adenosine_genes_u) %>%
-  dplyr::select(Gene.symbol, p_raw, p_adj, rank_adj, direction) %>%
+  dplyr::select(gene, p_raw, p_adj, direction) %>% #ADD RANKADJ
   arrange(p_raw)
 
 adenosine_hits_geo
@@ -90,6 +87,22 @@ adenosine_hits_geo
 #15        ADA2 1.000000000 1.0000000  11251.5        up
 #16     ADORA2B 1.000000000 1.0000000  11251.5        up
 #17      ADORA3 1.000000000 1.0000000  11251.5        up
+
+
+#gene       p_raw     p_adj direction
+#1      ADA 0.004661855 0.1087501        up
+#2   ADORA1 0.006880527 0.1410876        up
+#3  SLC28A1 0.016612967 0.2517180        up
+#4   ENTPD1 0.039023343 0.4318778        up
+#5     DPP4 0.043042465 0.6969020      down
+#6     NT5E 0.184050937 1.0000000      down
+#7  SLC29A1 0.519867496 1.0000000        up
+#8      ADK 1.000000000 1.0000000        up
+#9  ADORA2A 1.000000000 1.0000000        up
+#10    ADA2 1.000000000 1.0000000        up
+#11 ADORA2B 1.000000000 1.0000000        up
+#12  ADORA3 1.000000000 1.0000000        up
+
 
 ###Conclusion: number ob significant genes are low, and importat genes are not included
 #Lets explore each dataset
