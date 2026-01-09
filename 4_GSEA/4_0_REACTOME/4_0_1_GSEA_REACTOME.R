@@ -8,7 +8,6 @@ suppressPackageStartupMessages({
   library(clusterProfiler)
   library(enrichplot)
   library(msigdbr)
-  library(stringr)   # <-- CAMBIO MÍNIMO: para str_wrap()
 })
 
 options(stringsAsFactors = FALSE)
@@ -67,7 +66,7 @@ run_gsea_reactome <- function(geneList, p_cut = 0.01) {
   gsea <- GSEA(
     geneList     = geneList,
     TERM2GENE    = TERM2GENE_REACT,
-    pvalueCutoff = 1,       # guardar FULL; filtrar después
+    pvalueCutoff = 1,
     minGSSize    = 10,
     maxGSSize    = 500,
     eps          = 0,
@@ -107,9 +106,7 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     slice_head(n = 20)
   
   top <- bind_rows(top_up, top_down) %>%
-    mutate(
-      Description = gsub("^REACTOME_", "", Description)
-    ) %>%
+    mutate(Description = gsub("^REACTOME_", "", Description)) %>%
     arrange(NES) %>%
     mutate(Description = factor(Description, levels = unique(Description)))
   
@@ -122,8 +119,6 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
     geom_point(alpha = 0.95, shape = 16) +
     scale_color_viridis_c(name = expression(-log[10]("FDR"))) +
     scale_size_continuous(name = "|NES|") +
-    scale_y_discrete(labels = function(x) str_wrap(x, width = 40)) +  # <-- CAMBIO MÍNIMO: wrap para que GTEx no se vea “chico”
-    scale_x_continuous(expand = expansion(mult = c(0.05, 0.05))) +
     labs(
       title = main_title,
       subtitle = subtitle,
@@ -135,17 +130,17 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
       panel.grid.minor = element_blank(),
       legend.box = "vertical",
       plot.subtitle = element_text(size = 10),
-      axis.text.y = element_text(face = "bold")
+      axis.text.y = element_text(face = "bold")  # <-- ÚNICO cambio estético que se queda
     )
   
   # ====== Guardado PDF + PNG 600 DPI ====== #
   ggsave(out_pdf, p,
-         width = 9, height = 8.5, units = "in",
+         width = 11, height = 8.5, units = "in",
          device = cairo_pdf)
   
   out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
   ggsave(out_png, p,
-         width = 9, height = 8.5, units = "in",
+         width = 11, height = 8.5, units = "in",
          dpi = 600)
   
   invisible(p)
@@ -156,7 +151,7 @@ save_outputs <- function(prefix, subtitle, res_list) {
   write_tsv(res_list$full,
             file.path(out_dir, paste0(prefix, "_REACTOME_FULL.tsv")))
   write_tsv(res_list$sig,
-            file.path(out_dir, paste0(prefix, "_REACTOME_SIG_0.01.tsv")))
+            file.path(out_dir, paste0(prefix, "_REACTOME_0.01.tsv")))
   
   plot_top20_up_down(
     gsea_df    = res_list$full,
