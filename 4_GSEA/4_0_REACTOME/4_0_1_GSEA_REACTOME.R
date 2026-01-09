@@ -137,12 +137,12 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
   
   # ====== Guardado PDF + PNG 600 DPI (igual que KEGG) ====== #
   ggsave(out_pdf, p,
-         width = 7, height = 8.5, units = "in",
+         width = 9, height = 8.5, units = "in",
          device = cairo_pdf)
   
   out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
   ggsave(out_png, p,
-         width = 7, height = 8.5, units = "in",
+         width = 9, height = 8.5, units = "in",
          dpi = 600)
   
   invisible(p)
