@@ -6,16 +6,20 @@ setwd("/STORAGE/csbig/hachepunto/adenosina/Ovary_signatures/4_DEG_GEO")
 ## Paquetes necesarios
 ## ============================================================
 
-if (!requireNamespace("GEOquery", quietly = TRUE)) {
-  BiocManager::install("GEOquery")
-}
-if (!requireNamespace("limma", quietly = TRUE)) {
-  BiocManager::install("limma")
-}
+# if (!requireNamespace("GEOquery", quietly = TRUE)) {
+#   BiocManager::install("GEOquery")
+# }
+# if (!requireNamespace("limma", quietly = TRUE)) {
+#   BiocManager::install("limma")
+# }
+
+# install.packages("RobustRankAggreg")
 
 library(GEOquery)
 library(limma)
 library(gprofiler2)
+library(RobustRankAggreg)
+library(dplyr)
 
 
 
@@ -777,61 +781,64 @@ collapse_limma_list <- function(de_list,
 ## ============================================================
 ## 8) Robust Rank Aggreg
 ## ============================================================
-# install.packages("RobustRankAggreg")
-library(RobustRankAggreg)
 
 make_rank_lists <- function(de_list,
                             direction = c("up", "down"),
                             p_col     = "adj.P.Val",
                             lfc_col   = "logFC",
-                            p_cutoff  = 0.1,      # opcional: filtrar por FDR
-                            max_genes = Inf) {    # opcional: top N
+                            stat_col  = NULL,     # si ya tienes un "stat" úsalo aquí
+                            max_genes = Inf) {
+
   direction <- match.arg(direction)
-  
   out <- list()
-  
+
   for (nm in names(de_list)) {
     df <- de_list[[nm]]
     if (is.null(df) || nrow(df) == 0L) next
-    
-    # Filtrar símbolos válidos
-    df <- df[!is.na(df$Gene.symbol) & df$Gene.symbol != "", , drop = FALSE]
-    
-    if (!all(c(p_col, lfc_col) %in% colnames(df))) {
-      warning("En ", nm, " faltan columnas ", p_col, " o ", lfc_col, ". Omito.")
+
+    # símbolos válidos
+    if (!("Gene.symbol" %in% colnames(df))) {
+      warning("En ", nm, " falta Gene.symbol. Omito.")
       next
     }
-    
-    # Elegir dirección
+    df <- df[!is.na(df$Gene.symbol) & df$Gene.symbol != "", , drop = FALSE]
+    if (nrow(df) == 0L) next
+
+    # dirección por logFC (solo para separar up/down)
+    if (!lfc_col %in% colnames(df)) {
+      warning("En ", nm, " falta ", lfc_col, ". Omito.")
+      next
+    }
     if (direction == "up") {
       df <- df[df[[lfc_col]] > 0, , drop = FALSE]
     } else {
       df <- df[df[[lfc_col]] < 0, , drop = FALSE]
     }
-    
     if (nrow(df) == 0L) next
-    
-    # Filtrar por p-valor ajustado si quieres
-    df <- df[df[[p_col]] <= p_cutoff, , drop = FALSE]
-    if (nrow(df) == 0L) next
-    
-    # Ordenar por evidencia de DE (p menor primero, luego |logFC| mayor)
-    df <- df[order(df[[p_col]], -abs(df[[lfc_col]])), , drop = FALSE]
-    
-    # Limitar a top N si se desea
+
+    # ranking continuo
+    if (!is.null(stat_col) && stat_col %in% colnames(df)) {
+      # más grande = más evidencia
+      df <- df[order(-df[[stat_col]]), , drop = FALSE]
+    } else {
+      # fallback: p primero, luego |logFC|
+      if (!p_col %in% colnames(df)) {
+        warning("En ", nm, " falta ", p_col, " y no diste stat_col. Omito.")
+        next
+      }
+      df <- df[order(df[[p_col]], -abs(df[[lfc_col]])), , drop = FALSE]
+    }
+
     if (is.finite(max_genes) && nrow(df) > max_genes) {
       df <- df[seq_len(max_genes), , drop = FALSE]
     }
-    
-    # Lista para RRA: vector de símbolos ordenados
+
     out[[nm]] <- df$Gene.symbol
   }
-  
-  # Quitar datasets sin genes
+
   out <- out[sapply(out, length) > 0]
   out
 }
-
 
 
 ## ============================================================
@@ -912,25 +919,11 @@ de_genes <- collapse_limma_list(
 )
 # Ejemplo: ver cabecera de un dataset
 head(de_genes$GSE27651)
+saveRDS(de_genes, "DEGs_alldsets_GEO.rds")
 
 # 8) Ordenar listas para RRA
-# Listas de genes UP regulados por dataset
-rank_lists_up <- make_rank_lists(
-  de_list   = de_genes,
-  direction = "up",
-  p_cutoff  = 0.05,   # por ejemplo
-  max_genes = Inf
-)
-
-# Listas de genes DOWN regulados por dataset
-rank_lists_down <- make_rank_lists(
-  de_list   = de_genes,
-  direction = "down",
-  p_cutoff  = 0.05,
-  max_genes = Inf
-)
-
-
+rank_lists_up <- make_rank_lists(de_genes, direction="up",   p_col="adj.P.Val")
+rank_lists_dn <- make_rank_lists(de_genes, direction="down", p_col="adj.P.Val")
 
 # 9) correr RRA
 # UP-regulated meta-set
@@ -941,7 +934,7 @@ rra_up <- RobustRankAggreg::aggregateRanks(
 
 # DOWN-regulated meta-set
 rra_down <- RobustRankAggreg::aggregateRanks(
-  glist = rank_lists_down,
+  glist = rank_lists_dn,
   full  = TRUE
 )
 
@@ -960,58 +953,133 @@ adjust_rra_no_filter <- function(rra_tbl, method = "BH") {
   out
 }
 
-merge_rra_up_down <- function(rra_up, rra_down, method = "BH") {
-  up   <- adjust_rra_no_filter(rra_up, method = method)
-  down <- adjust_rra_no_filter(rra_down, method = method)
+# merge_rra_up_down <- function(rra_up, rra_down, method = "BH") {
+#   up   <- adjust_rra_no_filter(rra_up, method = method)
+#   down <- adjust_rra_no_filter(rra_down, method = method)
   
-  up$direction   <- "up"
-  down$direction <- "down"
+#   up$direction   <- "up"
+#   down$direction <- "down"
   
-  geo_rra <- rbind(up, down)
-  geo_rra <- geo_rra[order(geo_rra$rank_adj, geo_rra$p_adj, geo_rra$p_raw), ]
+#   geo_rra <- rbind(up, down)
+#   geo_rra <- geo_rra[order(geo_rra$rank_adj, geo_rra$p_adj, geo_rra$p_raw), ]
   
-  rownames(geo_rra) <- NULL
-  geo_rra
-}
+#   rownames(geo_rra) <- NULL
+#   geo_rra
+# }
 
-geo_rra_all <- merge_rra_up_down(rra_up, rra_down, method = "BH")
+# geo_rra_all <- merge_rra_up_down(rra_up, rra_down, method = "BH")
 
-head(geo_rra_all)
-table(geo_rra_all$direction)
+library(dplyr)
 
-saveRDS(geo_rra_all, file = "GEO_ovarian_cancer_RRA_results.rds")
-write.table(geo_rra_all,
+# =========================
+# 1) UP/DOWN ajustados
+# =========================
+up <- adjust_rra_no_filter(rra_up, method = "BH") %>%
+  transmute(
+    gene     = as.character(Gene.symbol),
+    p_raw_up = as.numeric(p_raw),
+    p_adj_up = as.numeric(p_adj)
+  )
+
+down <- adjust_rra_no_filter(rra_down, method = "BH") %>%
+  transmute(
+    gene     = as.character(Gene.symbol),
+    p_raw_dn = as.numeric(p_raw),
+    p_adj_dn = as.numeric(p_adj)
+  )
+
+# =========================
+# 2) m = universo completo (sin colapsar)
+#    (esto es lo que te faltaba)
+# =========================
+m <- full_join(up, down, by = "gene") %>%
+  filter(!is.na(gene), nzchar(gene))
+
+# =========================
+# 3) geo_rra_1row = 1 fila por gen (elige lado por menor p_adj)
+# =========================
+geo_rra_1row <- m %>%
+  mutate(
+    direction = case_when(
+      is.na(p_adj_dn) ~ "up",
+      is.na(p_adj_up) ~ "down",
+      p_adj_up <= p_adj_dn ~ "up",
+      TRUE ~ "down"
+    ),
+    p_adj = pmin(p_adj_up, p_adj_dn, na.rm = TRUE),
+    p_raw = pmin(p_raw_up, p_raw_dn, na.rm = TRUE)
+  ) %>%
+  select(gene, direction, p_raw, p_adj) %>%
+  filter(is.finite(p_adj)) %>%
+  arrange(p_adj, p_raw) %>%
+  mutate(
+    rank_adj = rank(p_adj, ties.method = "average"),
+    rank_raw = rank(p_raw, ties.method = "average")
+  ) %>%
+  group_by(direction) %>%
+  arrange(p_adj, p_raw, .by_group = TRUE) %>%
+  mutate(rank_adj_within_dir = row_number()) %>%
+  ungroup()
+
+
+head(geo_rra_1row)
+table(geo_rra_1row$direction)
+
+
+saveRDS(geo_rra_1row, file = "GEO_ovarian_cancer_RRA_1row.rds")
+
+# =========================
+# 4) Tabla "reportable" genome-wide sin filtros
+#    (rank para todos los genes, con score Z firmado)
+# =========================
+
+rra_report_all <- geo_rra_1row %>%
+  mutate(
+    sign_dir = ifelse(direction == "up", 1, -1),
+
+    # clamp01 inline: evitar 0 y 1 exactos
+    p_adj_clamped = pmin(
+      pmax(as.numeric(p_adj), 1e-300),
+      1 - 1e-300
+    ),
+
+    z_abs = qnorm(1 - p_adj_clamped / 2),
+    rra_z = sign_dir * z_abs,
+    abs_rra_z = abs(rra_z)
+  ) %>%
+  arrange(desc(abs_rra_z), p_adj, p_raw) %>%
+  mutate(rank_by_absZ = row_number()) %>%
+  group_by(direction) %>%
+  mutate(rank_by_absZ_within_dir = row_number()) %>%
+  ungroup() %>%
+  select(
+    gene, direction,
+    p_raw, p_adj,
+    rank_adj, rank_raw, rank_adj_within_dir,
+    rra_z, abs_rra_z,
+    rank_by_absZ, rank_by_absZ_within_dir
+  )
+
+# Descripción de las columnas de rra_report_all
+# gene: Símbolo génico (HGNC). Una fila por gen, genome-wide.
+# direction: Dirección del efecto RRA (“up” o “down”), determinada por el lado (UP/DOWN) con menor p_adj en el RRA original de GEO.
+# p_raw: Valor p crudo del RRA correspondiente a la dirección ganadora (UP o DOWN).
+# p_adj: Valor p ajustado (BH/FDR) del RRA correspondiente a la dirección ganadora. Es el p-value formal que se reportaría en una tabla clásica de RRA.
+
+# rank_adj: Ranking global (todas las direcciones) por p_adj ascendente. Empates se resuelven con ties.method = "average".
+# rank_raw: Ranking global por p_raw ascendente. Útil solo para inspección.
+# rank_adj_within_dir: Ranking por p_adj dentro de cada dirección (up y down por separado). Equivalente a “Top up genes” y “Top down genes” en tablas clásicas.
+
+# rra_z: Score continuo firmado del RRA. Magnitud = evidencia; signo = dirección.
+# abs_rra_z: Valor absoluto de rra_z. Mide fuerza de la señal RRA, independiente de la dirección.
+
+# * rank_by_absZ: Ranking global final por evidencia RRA, ordenado por abs_rra_z descendente. Este es el ranking principal genome-wide.
+# * rank_by_absZ_within_dir: Ranking por evidencia RRA dentro de cada dirección (up / down). Útil para reportar “Top upregulated” y “Top downregulated” genes.
+
+
+saveRDS(rra_report_all, file = "GEO_ovarian_cancer_RRA_results.rds")
+write.table(rra_report_all,
 								file = "GEO_ovarian_cancer_RRA_results.tsv",
 								sep  = "\t",
 								row.names = FALSE,
 								quote = FALSE)
-
-
-# adjust_rra <- function(rra_tbl, method = "BH", alpha = 0.05) {
-#   stopifnot(all(c("Name", "Score") %in% colnames(rra_tbl)))
-  
-#   rra_tbl$gene  <- rra_tbl$Name
-#   rra_tbl$p_raw <- rra_tbl$Score
-#   rra_tbl$p_adj <- p.adjust(rra_tbl$p_raw, method = method)
-  
-#   rra_tbl <- rra_tbl[order(rra_tbl$p_adj), ]
-  
-#   sig <- subset(rra_tbl, p_adj < alpha)
-  
-#   list(
-#     table_all = rra_tbl,
-#     sig       = sig
-#   )
-# }
-
-# # Uso:
-# adj_up   <- adjust_rra(rra_up, alpha = 0.05)
-# rra_up_all <- adj_up$table_all
-# meta_up    <- adj_up$sig
-
-# adj_down   <- adjust_rra(rra_down, alpha = 0.05)
-# rra_down_all <- adj_down$table_all
-# meta_down    <- adj_down$sig
-
-
-
