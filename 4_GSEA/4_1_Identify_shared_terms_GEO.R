@@ -215,7 +215,7 @@ for (db in names(dbs)) {
     top_tbl = top_terms,
     title_txt = paste0("Top ", top_n, " ", db, " terms shared in ≥", min_k, " datasets"),
     subtitle_txt = paste0("Ranking: n_datasets desc, min FDR asc, |NES| mean desc (FDR<", fdr_tag,
-                          "). Bars ordered by NES_mean."),
+                          ")."),
     out_pdf = bar_pdf,
     out_png = bar_png
   )
