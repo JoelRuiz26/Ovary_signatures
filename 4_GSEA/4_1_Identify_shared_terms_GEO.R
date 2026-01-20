@@ -4,8 +4,6 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(readr)
   library(ggplot2)
-  library(ggvenn)
-  library(stringr)
 })
 
 options(stringsAsFactors = FALSE)
@@ -13,27 +11,25 @@ options(stringsAsFactors = FALSE)
 # ===================== CONFIG ===================== #
 base_dir <- "~/Ovary_signatures/4_GSEA"
 
-# Carpetas reales (según tu tree)
 dbs <- list(
   KEGG         = "4_0_KEGG",
   Reactome     = "4_0_REACTOME",
   WikiPathways = "4_0_WIKIPATHWAYS"
 )
 
-# Umbral actual en tus outputs
-fdr_tag <- "0.05"
+fdr_tag <- "0.05"      # tus SIG_0.05.tsv
+min_k   <- 5           # al menos 5 datasets (de 8)
+top_n   <- 20          # top 20 términos
 
 # ===================== HELPERS ===================== #
 load_sig <- function(dir, prefix, fdr_tag = "0.05") {
   
-  # 1) Naming actual: *_SIG_0.05.tsv
   files <- list.files(
     path = dir,
     pattern = paste0("^", prefix, ".*_SIG_", gsub("\\.", "\\\\.", fdr_tag), "\\.tsv$"),
     full.names = TRUE
   )
   
-  # 2) Fallback por compatibilidad: *_0.05.tsv (naming viejo)
   if (length(files) == 0) {
     files <- list.files(
       path = dir,
@@ -52,241 +48,239 @@ load_sig <- function(dir, prefix, fdr_tag = "0.05") {
   readr::read_tsv(files[1], show_col_types = FALSE)
 }
 
-get_direction <- function(df) {
-  df %>% dplyr::mutate(Direction = ifelse(NES > 0, "Up", "Down"))
-}
-
 clean_description <- function(df, db_name) {
-  # Limpieza solicitada:
-  # - Reactome: quitar "REACTOME_"
-  # - WikiPathways: quitar "WP_"
   if (db_name == "Reactome") {
-    df <- df %>% dplyr::mutate(Description = gsub("^REACTOME_", "", Description))
+    df <- df %>% mutate(Description = gsub("^REACTOME_", "", Description))
   }
   if (db_name == "WikiPathways") {
-    df <- df %>% dplyr::mutate(Description = gsub("^WP_", "", Description))
+    df <- df %>% mutate(Description = gsub("^WP_", "", Description))
   }
   df
 }
 
-make_venn <- function(terms1, terms2, title_txt, subtitle_txt, out_pdf) {
+# ---- UpSet plot (intenta ComplexUpset; si no, usa UpSetR) ----
+plot_upset_safe <- function(inc_df, set_cols, title_txt, out_pdf, out_png) {
   
-  venn_list <- list(
-    "Set_1" = terms1,
-    "Set_2" = terms2
-  )
-  
-  p <- ggvenn::ggvenn(
-    venn_list,
-    fill_color      = c("#1F77B4", "#FF7F0E"),
-    fill_alpha      = 0.45,
-    stroke_size     = 0.9,
-    set_name_size   = 6,
-    text_size       = 6,
-    show_percentage = TRUE,
-    digits          = 1,
-    label_sep       = "\n"
-  ) +
-    ggplot2::labs(
-      title = stringr::str_wrap(title_txt, 55),
-      subtitle = subtitle_txt
+  # inc_df: data.frame con columnas lógicas/0-1 por set, y (opcional) otras cols
+  if (requireNamespace("ComplexUpset", quietly = TRUE)) {
+    # ComplexUpset usa ggplot2
+    p <- ComplexUpset::upset(
+      inc_df,
+      intersect = set_cols,
+      name = "Intersection",
+      width_ratio = 0.15
     ) +
-    ggplot2::coord_fixed() +
-    ggplot2::theme_classic(base_size = 13) +
-    ggplot2::theme(
-      axis.line  = ggplot2::element_blank(),
-      axis.text  = ggplot2::element_blank(),
-      axis.ticks = ggplot2::element_blank(),
-      axis.title = ggplot2::element_blank(),
-      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
-      plot.subtitle = ggplot2::element_text(hjust = 0.5)
+      ggplot2::labs(title = title_txt)
+    
+    ggplot2::ggsave(out_pdf, p, width = 12, height = 6, units = "in", device = cairo_pdf)
+    ggplot2::ggsave(out_png, p, width = 12, height = 6, units = "in", dpi = 600)
+    return(invisible(TRUE))
+  }
+  
+  if (requireNamespace("UpSetR", quietly = TRUE)) {
+    grDevices::pdf(out_pdf, width = 12, height = 6)
+    UpSetR::upset(
+      inc_df,
+      sets = set_cols,
+      keep.order = TRUE,
+      order.by = "freq",
+      mainbar.y.label = "Intersection size",
+      sets.x.label = "Set size"
     )
+    grDevices::dev.off()
+    
+    # PNG (base)
+    grDevices::png(out_png, width = 12, height = 6, units = "in", res = 600)
+    UpSetR::upset(
+      inc_df,
+      sets = set_cols,
+      keep.order = TRUE,
+      order.by = "freq",
+      mainbar.y.label = "Intersection size",
+      sets.x.label = "Set size"
+    )
+    grDevices::dev.off()
+    return(invisible(TRUE))
+  }
   
-  ggplot2::ggsave(out_pdf, p, width = 6, height = 6)
-  
-  out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
-  ggplot2::ggsave(out_png, p, width = 6, height = 6, dpi = 600)
+  warning("No está instalado ComplexUpset ni UpSetR. Instala uno:\n",
+          "  install.packages('ComplexUpset')  # recomendado\n",
+          "  # o\n  install.packages('UpSetR')\n",
+          "No se generó el UpSet plot.")
+  invisible(FALSE)
 }
 
-plot_top20_shared <- function(df, title, subtitle, out_pdf) {
+# Bubble plot para top shared terms
+plot_bubble_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
-  dfp <- df %>%
-    dplyr::filter(!is.na(NES), !is.na(p.adjust), p.adjust > 0) %>%
-    dplyr::mutate(neglog10_fdr = -log10(p.adjust)) %>%
-    dplyr::arrange(NES)
+  if (nrow(top_tbl) == 0) {
+    message("No hay términos para bubble plot: ", title_txt)
+    return(invisible(NULL))
+  }
   
-  top_up <- dfp %>%
-    dplyr::filter(NES > 0) %>%
-    dplyr::arrange(p.adjust, dplyr::desc(NES)) %>%
-    dplyr::slice_head(n = 20)
+  dfp <- top_tbl %>%
+    mutate(
+      neglog10_fdr = -log10(padj_min),
+      Description = factor(Description, levels = rev(Description))
+    )
   
-  top_down <- dfp %>%
-    dplyr::filter(NES < 0) %>%
-    dplyr::arrange(p.adjust, NES) %>%
-    dplyr::slice_head(n = 20)
-  
-  top <- dplyr::bind_rows(top_up, top_down) %>%
-    dplyr::arrange(NES) %>%
-    dplyr::mutate(Description = factor(Description, levels = unique(Description)))
-  
-  p <- ggplot2::ggplot(top, ggplot2::aes(
-    x = NES,
+  p <- ggplot(dfp, aes(
+    x = NES_mean,
     y = Description,
     color = neglog10_fdr,
-    size  = abs(NES)
+    size = n_datasets
   )) +
-    ggplot2::geom_point(shape = 16, alpha = 0.95) +
-    ggplot2::scale_color_viridis_c(name = expression(-log[10]("FDR"))) +
-    ggplot2::scale_size_continuous(name = "|NES|") +
-    ggplot2::labs(
-      title = title,
-      subtitle = subtitle,
-      x = "Normalized Enrichment Score (NES)",
+    geom_point(alpha = 0.95, shape = 16) +
+    scale_color_viridis_c(name = expression(-log[10]("min FDR"))) +
+    scale_size_continuous(name = "N datasets") +
+    labs(
+      title = title_txt,
+      subtitle = subtitle_txt,
+      x = "Mean NES across datasets (present only)",
       y = NULL
     ) +
-    ggplot2::theme_bw(base_size = 11) +
-    ggplot2::theme(
-      panel.grid.minor = ggplot2::element_blank(),
-      axis.text.y = ggplot2::element_text(face = "bold")
+    theme_bw(base_size = 11) +
+    theme(
+      panel.grid.minor = element_blank(),
+      axis.text.y = element_text(face = "bold")
     )
   
-  ggplot2::ggsave(out_pdf, p, width = 11, height = 8.5)
+  ggsave(out_pdf, p, width = 11, height = 8.5, units = "in", device = cairo_pdf)
+  ggsave(out_png, p, width = 11, height = 8.5, units = "in", dpi = 600)
   
-  out_png <- sub("\\.pdf$", ".png", out_pdf, ignore.case = TRUE)
-  ggplot2::ggsave(out_png, p, width = 11, height = 8.5, dpi = 600)
-}
-
-# ---- Core: genera "exactamente lo mismo" para un par A vs B ----
-pairwise_shared <- function(db, shared_dir, A_prefix, A_label, A_subtitle,
-                            B_prefix, B_label, B_subtitle, fdr_tag = "0.05") {
-  
-  # Cargar y limpiar
-  A <- load_sig(file.path(base_dir, dbs[[db]]), A_prefix, fdr_tag = fdr_tag) %>%
-    clean_description(., db) %>%
-    get_direction()
-  
-  B <- load_sig(file.path(base_dir, dbs[[db]]), B_prefix, fdr_tag = fdr_tag) %>%
-    clean_description(., db) %>%
-    get_direction()
-  
-  # Compartidos (sin exigir misma dirección)
-  shared_terms <- A %>%
-    dplyr::inner_join(B %>% dplyr::select(Description), by = "Description") %>%
-    dplyr::distinct(Description)
-  
-  # Guardar lista de términos compartidos
-  readr::write_tsv(
-    shared_terms,
-    file.path(shared_dir, paste0(db, "_shared_terms_", A_prefix, "_vs_", B_prefix, ".tsv"))
-  )
-  
-  # Merged completo
-  shared_merged <- A %>%
-    dplyr::inner_join(B, by = "Description",
-                      suffix = c(paste0("_", A_label), paste0("_", B_label)))
-  
-  readr::write_tsv(
-    shared_merged,
-    file.path(shared_dir, paste0(db, "_shared_merged_", A_prefix, "_vs_", B_prefix, ".tsv"))
-  )
-  
-  # Venn
-  make_venn(
-    terms1 = A$Description,
-    terms2 = B$Description,
-    title_txt = paste(db, "pathways enriched in ovarian cancer"),
-    subtitle_txt = paste0("Shared significant pathways: ", A_label, " vs ", B_label),
-    out_pdf = file.path(shared_dir, paste0(db, "_shared_venn_", A_prefix, "_vs_", B_prefix, ".pdf"))
-  )
-  
-  # Dotplot A (solo compartidos)
-  A_shared <- A %>% dplyr::semi_join(shared_terms, by = "Description")
-  plot_top20_shared(
-    df = A_shared,
-    title = paste("Shared", db, "pathways"),
-    subtitle = A_subtitle,
-    out_pdf = file.path(shared_dir, paste0(db, "_shared_top20_up_down_", A_prefix, "_vs_", B_prefix, "_", A_label, ".pdf"))
-  )
-  
-  # Dotplot B (solo compartidos)
-  B_shared <- B %>% dplyr::semi_join(shared_terms, by = "Description")
-  plot_top20_shared(
-    df = B_shared,
-    title = paste("Shared", db, "pathways"),
-    subtitle = B_subtitle,
-    out_pdf = file.path(shared_dir, paste0(db, "_shared_top20_up_down_", A_prefix, "_vs_", B_prefix, "_", B_label, ".pdf"))
-  )
+  invisible(p)
 }
 
 # ===================== MAIN LOOP ===================== #
 for (db in names(dbs)) {
   
-  message("Processing ", db, "...")
+  message("\n==============================")
+  message("Processing ", db, " (UpSet + top shared >= ", min_k, ") ...")
+  message("==============================")
   
   db_dir <- file.path(base_dir, dbs[[db]])
   shared_dir <- file.path(db_dir, "shared")
   dir.create(shared_dir, showWarnings = FALSE)
   
-  # ---------- 1) ORIGINAL: GTEx vs AE ----------
-  pairwise_shared(
-    db = db,
-    shared_dir = shared_dir,
-    A_prefix = "GTEx",
-    A_label = "GTEx",
-    A_subtitle = "Ovary tumors vs ovary control GTEx",
-    B_prefix = "AE",
-    B_label = "AE",
-    B_subtitle = "Ovary tumors vs reference control",
-    fdr_tag = fdr_tag
-  )
-  
-  # ---------- 2) GEO outputs ----------
+  # --------- Detectar GEO prefijos (robusto) ---------
   geo_sig_files <- list.files(
     path = db_dir,
     pattern = paste0("^GEO_.*_SIG_", gsub("\\.", "\\\\.", fdr_tag), "\\.tsv$"),
     full.names = FALSE
   )
   
-  if (length(geo_sig_files) == 0) {
-    message("  No GEO SIG files found for ", db, " (FDR ", fdr_tag, "). Skipping GEO.")
-    next
+  # Extrae "GEO_GSE####" de: GEO_GSE14407_REACTOME_SIG_0.05.tsv (etc.)
+  geo_prefixes <- character()
+  if (length(geo_sig_files) > 0) {
+    geo_prefixes <- unique(sub(paste0("_[A-Z]+_SIG_", gsub("\\.", "\\\\.", fdr_tag), "\\.tsv$"), "", geo_sig_files))
+    # por seguridad, filtra solo los que realmente empiezan con GEO_
+    geo_prefixes <- geo_prefixes[grepl("^GEO_", geo_prefixes)]
   }
   
-  # ====== FIX MÍNIMO (CRÍTICO) ======
-  # Antes: dependía de 'db' ("Reactome") vs filename ("_REACTOME_") -> no matcheaba
-  # Ahora: extrae el prefijo "GEO_GSE####" robustamente para KEGG/REACTOME/WIKIPATHWAYS
-  geo_prefixes <- unique(sub("_.*$", "", geo_sig_files))
-  # Ejemplo: "GEO_GSE14407"
+  dataset_prefixes <- c("GTEx", "AE", sort(geo_prefixes))
+  message("Datasets detectados: ", paste(dataset_prefixes, collapse = ", "))
   
-  for (geo_prefix in geo_prefixes) {
-    message("  GEO: ", geo_prefix)
+  # --------- Cargar todos los SIG de los 8 datasets ---------
+  all_long <- list()
+  
+  for (pref in dataset_prefixes) {
+    df <- load_sig(db_dir, pref, fdr_tag = fdr_tag) %>%
+      clean_description(., db) %>%
+      transmute(
+        Dataset = pref,
+        Description = as.character(Description),
+        NES = as.numeric(NES),
+        p.adjust = as.numeric(p.adjust)
+      ) %>%
+      filter(!is.na(Description), Description != "", !is.na(NES), is.finite(NES),
+             !is.na(p.adjust), is.finite(p.adjust))
     
-    # (a) GEO vs GTEx
-    pairwise_shared(
-      db = db,
-      shared_dir = shared_dir,
-      A_prefix = geo_prefix,
-      A_label = "GEO",
-      A_subtitle = paste0("Ovary tumors vs control (", sub("^GEO_", "", geo_prefix), ")"),
-      B_prefix = "GTEx",
-      B_label = "GTEx",
-      B_subtitle = "Ovary tumors vs ovary control GTEx",
-      fdr_tag = fdr_tag
-    )
-    
-    # (b) GEO vs AE
-    pairwise_shared(
-      db = db,
-      shared_dir = shared_dir,
-      A_prefix = geo_prefix,
-      A_label = "GEO",
-      A_subtitle = paste0("Ovary tumors vs control (", sub("^GEO_", "", geo_prefix), ")"),
-      B_prefix = "AE",
-      B_label = "AE",
-      B_subtitle = "Ovary tumors vs reference control",
-      fdr_tag = fdr_tag
-    )
+    all_long[[pref]] <- df
   }
+  
+  all_long_df <- bind_rows(all_long)
+  
+  # --------- Incidencia (término presente / ausente por dataset) ---------
+  inc <- all_long_df %>%
+    distinct(Dataset, Description) %>%
+    mutate(present = 1L) %>%
+    tidyr::pivot_wider(
+      names_from = Dataset,
+      values_from = present,
+      values_fill = 0L
+    )
+  
+  # Si tidyr no está, instrucción clara (pero no rompas silenciosamente)
+  if (!requireNamespace("tidyr", quietly = TRUE)) {
+    stop("Falta el paquete 'tidyr' para construir la matriz de incidencia. Instala:\n",
+         "  install.packages('tidyr')\n")
+  }
+  
+  # tidyr pivot_wider ya se usó arriba; si no existía, ya habría fallado.
+  # (lo dejamos así para que el error sea explícito)
+  
+  # Calcula cuántos datasets contienen cada término
+  set_cols <- dataset_prefixes
+  inc <- inc %>%
+    mutate(n_datasets = rowSums(across(all_of(set_cols))))
+  
+  # Filtra términos compartidos por >= min_k datasets
+  inc_k <- inc %>% filter(n_datasets >= min_k)
+  
+  message("Términos con presencia en >= ", min_k, " datasets: ", nrow(inc_k))
+  
+  # --------- UpSet plot (solo términos >= min_k) ---------
+  upset_pdf <- file.path(shared_dir, paste0(db, "_UpSet_shared_ge_", min_k, "_of_", length(set_cols), ".pdf"))
+  upset_png <- sub("\\.pdf$", ".png", upset_pdf, ignore.case = TRUE)
+  
+  # Asegura columnas binarias (0/1) para UpSetR/ComplexUpset
+  inc_plot <- inc_k %>%
+    select(all_of(set_cols)) %>%
+    mutate(across(everything(), ~ as.integer(.x > 0)))
+  
+  plot_upset_safe(
+    inc_df   = inc_plot,
+    set_cols = set_cols,
+    title_txt = paste0(db, " | terms shared in \u2265", min_k, " / ", length(set_cols), " datasets (FDR<", fdr_tag, ")"),
+    out_pdf  = upset_pdf,
+    out_png  = upset_png
+  )
+  
+  # --------- Tabla resumen para términos >= min_k y seleccionar Top 20 ---------
+  # Resumen por término: frecuencia, min FDR, mean NES (solo donde aparece)
+  term_summary <- all_long_df %>%
+    semi_join(inc_k %>% select(Description), by = "Description") %>%
+    group_by(Description) %>%
+    summarise(
+      n_datasets = n_distinct(Dataset),
+      padj_min   = min(p.adjust, na.rm = TRUE),
+      NES_mean   = mean(NES, na.rm = TRUE),
+      NES_abs_mean = mean(abs(NES), na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    arrange(desc(n_datasets), padj_min, desc(NES_abs_mean))
+  
+  top_terms <- term_summary %>% slice_head(n = top_n)
+  
+  out_tsv <- file.path(shared_dir, paste0(db, "_Top", top_n, "_terms_shared_ge_", min_k, "_datasets.tsv"))
+  write_tsv(top_terms, out_tsv)
+  
+  # --------- Bubble plot (solo top20 de >= min_k datasets) ---------
+  bub_pdf <- file.path(shared_dir, paste0(db, "_Top", top_n, "_bubble_shared_ge_", min_k, ".pdf"))
+  bub_png <- sub("\\.pdf$", ".png", bub_pdf, ignore.case = TRUE)
+  
+  plot_bubble_top(
+    top_tbl = top_terms,
+    title_txt = paste0("Top ", top_n, " ", db, " terms shared in \u2265", min_k, " datasets"),
+    subtitle_txt = paste0("Ranking: n_datasets desc, min FDR asc, |NES| mean desc (FDR<", fdr_tag, ")"),
+    out_pdf = bub_pdf,
+    out_png = bub_png
+  )
+  
+  message("Saved:")
+  message("  UpSet: ", upset_pdf)
+  message("  Top terms TSV: ", out_tsv)
+  message("  Bubble: ", bub_pdf)
 }
 
-message("\nAll shared analyses completed (including GEO).")
+message("\nDONE: UpSet + Top terms + Bubble plots for KEGG/Reactome/WikiPathways.")
