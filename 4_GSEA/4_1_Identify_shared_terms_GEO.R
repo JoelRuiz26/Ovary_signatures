@@ -59,7 +59,7 @@ clean_description <- function(df, db_name) {
   df
 }
 
-# Barplot (ordenado)
+# Barplot (ordenado por NES_mean: mayor -> menor)
 plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
   if (nrow(top_tbl) == 0) {
@@ -67,13 +67,15 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
     return(invisible(NULL))
   }
   
-  # ORDEN: barras en orden por NES_mean (desc)
+  # ORDEN CORRECTO: NES_mean descendente (visual y estadístico)
   dfp <- top_tbl %>%
     mutate(
       neglog10_fdr = -log10(padj_min)
     ) %>%
     arrange(desc(NES_mean)) %>%
-    mutate(Description = factor(Description, levels = rev(Description)))
+    mutate(
+      Description = factor(Description, levels = Description)
+    )
   
   p <- ggplot(dfp, aes(
     x = NES_mean,
@@ -94,11 +96,17 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
       axis.text.y = element_text(face = "bold")
     )
   
-  ggsave(out_pdf, p, width = 11, height = 8.5, units = "in", device = cairo_pdf)
-  ggsave(out_png, p, width = 11, height = 8.5, units = "in", dpi = 600)
+  ggsave(out_pdf, p,
+         width = 11, height = 8.5, units = "in",
+         device = cairo_pdf)
+  
+  ggsave(out_png, p,
+         width = 11, height = 8.5, units = "in",
+         dpi = 600)
   
   invisible(p)
 }
+
 
 # ===================== MAIN LOOP ===================== #
 for (db in names(dbs)) {
