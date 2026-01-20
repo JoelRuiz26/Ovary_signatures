@@ -265,20 +265,17 @@ cat("Done.\n")
 
 
 
-
-
-#####################
 # ============================================================
 # ========== EXTRA HEATMAPS: Master Regulators / Targets ======
 # Requirements:
-# 1) Heatmap for TOP 10 master regulators (TF) by rank_by_interest
-#    - keep only rows with non-NA core_signature_score
-#    - plot those TF genes in DepMap (same style as main heatmap)
-# 2) Heatmap for ALL unique interest_target_genes across the table
-#    - plot those genes in DepMap (same style)
+# A) ONE heatmap with TFs = (Top5 highest NES) + (Top5 lowest NES)
+#    - Only rows with core_signature_score NOT NA
+#    - If TF repeats, keep best (smallest) rank_by_interest
+# B) ONE heatmap with ALL unique interest_target_genes
 # Notes:
-# - Both use importance_m11 (normalized [-1,1]) already computed pre-filter.
-# - Both keep the same column ordering + annotations (ovary_group split).
+# - Uses crispr_ovary_all (already normalized importance_m11 in [-1,1])
+# - Fixes "spaces" by preserving main column order (NO intersect sorting)
+# - For targets heatmap: DO NOT split columns by ovary_group (avoid gaps)
 # ============================================================
 
 # -------------------- Load MR table -------------------- #
@@ -292,15 +289,19 @@ make_heatmap_for_genes <- function(genes_vec,
                                    out_png_path,
                                    crispr_ovary_all_obj,
                                    cellline_groups_df,
-                                   highlight_genes_vec = character(0)) {
+                                   highlight_genes_vec = character(0),
+                                   split_by_group = FALSE,   # IMPORTANT: default FALSE to avoid "gaps"
+                                   cluster_rows = TRUE,
+                                   cluster_columns = TRUE) {
+  
   genes_vec <- unique(toupper(genes_vec))
   genes_vec <- genes_vec[!is.na(genes_vec) & genes_vec != ""]
   
   # subset from ALL (already normalized)
   df <- crispr_ovary_all_obj %>%
-    mutate(gene_u = toupper(gene_u)) %>%
-    filter(gene_u %in% genes_vec) %>%
-    transmute(
+    dplyr::mutate(gene_u = toupper(gene_u)) %>%
+    dplyr::filter(gene_u %in% genes_vec) %>%
+    dplyr::transmute(
       cell_line,
       gene = gene_u,
       importance_m11
@@ -311,43 +312,44 @@ make_heatmap_for_genes <- function(genes_vec,
     return(invisible(NULL))
   }
   
-  # Keep only OVARY cell lines; remove suffix for plotting
+  # remove suffix for plotting
   df_plot <- df %>%
-    mutate(cell = sub("_OVARY$", "", cell_line)) %>%
-    select(gene, cell, importance_m11)
+    dplyr::mutate(cell = sub("_OVARY$", "", cell_line)) %>%
+    dplyr::select(gene, cell, importance_m11)
   
   # matrix
   mat_df2 <- df_plot %>%
-    distinct(gene, cell, .keep_all = TRUE) %>%
+    dplyr::distinct(gene, cell, .keep_all = TRUE) %>%
     tidyr::pivot_wider(names_from = cell, values_from = importance_m11)
   
-  mat2 <- mat_df2 %>% as.data.frame()
+  mat2 <- as.data.frame(mat_df2)
   rownames(mat2) <- mat2$gene
   mat2$gene <- NULL
   mat2 <- as.matrix(mat2)
   
-  # Ensure columns order matches your existing main heatmap (same as mat)
-  # If 'mat' exists in env (from main heatmap), use it; otherwise use current order.
+  # ---- FIX 1: preserve main heatmap column order (avoid intersect sorting) ----
   if (exists("mat") && is.matrix(get("mat"))) {
     main_cols <- colnames(get("mat"))
-    common_cols <- intersect(main_cols, colnames(mat2))
+    common_cols <- main_cols[main_cols %in% colnames(mat2)]  # preserves order
     mat2 <- mat2[, common_cols, drop = FALSE]
   }
   
-  # Column annotation from cellline_groups_df (cell_line has _OVARY, mat has no suffix)
+  # Column group annotation (aligned to mat2 columns)
   col_grp2 <- cellline_groups_df %>%
-    mutate(cell = sub("_OVARY$", "", cell_line)) %>%
-    select(cell, ovary_group) %>%
-    distinct() %>%
+    dplyr::mutate(cell = sub("_OVARY$", "", cell_line)) %>%
+    dplyr::select(cell, ovary_group) %>%
+    dplyr::distinct() %>%
     as.data.frame()
   rownames(col_grp2) <- col_grp2$cell
   col_grp2$cell <- NULL
+  
+  # ensure col_grp2 order matches mat2 columns
   col_grp2 <- col_grp2[colnames(mat2), , drop = FALSE]
   
-  # colors: fixed [-1,1]
+  # fixed colors [-1,1]
   col_fun2 <- circlize::colorRamp2(c(-1, 0, 1), c("#2C7BB6", "white", "#D7191C"))
   
-  # group colors (re-use if exist, else define)
+  # group colors (reuse if already defined)
   if (!exists("grp_cols")) {
     grp_levels2 <- unique(col_grp2$ovary_group)
     grp_cols2 <- setNames(
@@ -366,7 +368,7 @@ make_heatmap_for_genes <- function(genes_vec,
     annotation_name_gp = gpar(fontsize = 9)
   )
   
-  # row labels: show all (small set) OR only highlight if you want
+  # row labels
   genes_present2 <- rownames(mat2)
   if (length(highlight_genes_vec) > 0) {
     hl2 <- intersect(toupper(highlight_genes_vec), genes_present2)
@@ -379,16 +381,19 @@ make_heatmap_for_genes <- function(genes_vec,
     row_names_gp2 <- gpar(fontsize = 9)
   }
   
+  # Optional split: if TRUE, split columns by group (introduces gaps by design)
+  col_split <- if (split_by_group) col_grp2$ovary_group else NULL
+  
   ht2 <- ComplexHeatmap::Heatmap(
     mat2,
     name = "Importance\n(-1 to 1)",
     col = col_fun2,
     na_col = "grey90",
     top_annotation = ca2,
-    column_split = col_grp2$ovary_group,
-    cluster_column_slices = TRUE,
-    cluster_rows = TRUE,
-    cluster_columns = TRUE,
+    column_split = col_split,
+    cluster_column_slices = if (split_by_group) TRUE else FALSE,
+    cluster_rows = cluster_rows,
+    cluster_columns = cluster_columns,
     show_row_dend = TRUE,
     show_column_dend = TRUE,
     row_labels = row_labels2,
@@ -418,38 +423,60 @@ make_heatmap_for_genes <- function(genes_vec,
   dev.off()
   cat("Saved: ", out_png_path, "\n", sep = "")
   
+  # quick NA check
+  cat("NA count in heatmap matrix: ", sum(is.na(mat2)), "\n", sep = "")
+  
   invisible(list(mat = mat2, ht = ht2))
 }
 
-# -------------------- 1) TOP 10 master regulators (TF) -------------------- #
-top10_mr <- masters_reg %>%
-  filter(!is.na(core_signature_score)) %>%              # your rule
-  arrange(rank_by_interest) %>%
-  distinct(TF, .keep_all = TRUE) %>%
-  slice_head(n = 10)
+# ============================================================
+# (A) TF heatmap: Top5 NES high + Top5 NES low in ONE heatmap
+# ============================================================
 
-top10_tfs <- unique(toupper(top10_mr$TF))
+# unique TF entries with core_signature_score not NA
+mr_tf_unique <- masters_reg %>%
+  dplyr::filter(!is.na(core_signature_score)) %>%
+  dplyr::arrange(rank_by_interest) %>%
+  dplyr::group_by(TF) %>%
+  dplyr::slice_head(n = 1) %>%
+  dplyr::ungroup()
 
-cat("\nTop 10 MRs (TF) used for heatmap:\n")
-print(top10_mr %>% select(TF, rank_by_interest, core_signature_score, TF_expression_status))
+top5_high <- mr_tf_unique %>%
+  dplyr::arrange(dplyr::desc(NES)) %>%
+  dplyr::slice_head(n = 5)
 
-out_pdf_mr10 <- file.path(OUT_DIR, "5_3_DepMap_OVARY_heatmap_top10_master_regulators.pdf")
-out_png_mr10 <- file.path(OUT_DIR, "5_3_DepMap_OVARY_heatmap_top10_master_regulators.png")
+top5_low <- mr_tf_unique %>%
+  dplyr::arrange(NES) %>%
+  dplyr::slice_head(n = 5)
+
+cat("\nTop 5 TFs by highest NES (core_signature_score not NA):\n")
+print(top5_high %>% dplyr::select(TF, NES, rank_by_interest, core_signature_score, TF_expression_status))
+
+cat("\nTop 5 TFs by lowest NES (core_signature_score not NA):\n")
+print(top5_low %>% dplyr::select(TF, NES, rank_by_interest, core_signature_score, TF_expression_status))
+
+tfs_10 <- unique(toupper(c(top5_high$TF, top5_low$TF)))
+
+out_pdf_tf10 <- file.path(OUT_DIR, "5_3_DepMap_OVARY_heatmap_TF_top5_high_plus_top5_low_NES.pdf")
+out_png_tf10 <- file.path(OUT_DIR, "5_3_DepMap_OVARY_heatmap_TF_top5_high_plus_top5_low_NES.png")
 
 make_heatmap_for_genes(
-  genes_vec = top10_tfs,
-  title = "DepMap OVARY — Top 10 Master Regulators (TF) by rank_by_interest (core_signature_score not NA)\nImportance normalized [-1,1] (+1 most essential per cell line)",
-  out_pdf_path = out_pdf_mr10,
-  out_png_path = out_png_mr10,
+  genes_vec = tfs_10,
+  title = "DepMap OVARY — TFs: Top5 highest NES + Top5 lowest NES (core_signature_score not NA)\nImportance normalized [-1,1] (+1 most essential per cell line)",
+  out_pdf_path = out_pdf_tf10,
+  out_png_path = out_png_tf10,
   crispr_ovary_all_obj = crispr_ovary_all,
-  cellline_groups_df = cellline_groups
+  cellline_groups_df = cellline_groups,
+  split_by_group = TRUE   # TF plot: OK to split (scientific grouping)
 )
 
-# -------------------- 2) ALL unique interest_target_genes -------------------- #
-# split on ';' and clean
+# ============================================================
+# (B) Targets heatmap: ALL unique interest_target_genes (NO SPLIT)
+# ============================================================
+
 all_targets <- masters_reg %>%
-  filter(!is.na(interes_target_genes), interes_target_genes != "") %>%
-  pull(interes_target_genes) %>%
+  dplyr::filter(!is.na(interes_target_genes), interes_target_genes != "") %>%
+  dplyr::pull(interes_target_genes) %>%
   strsplit(";", fixed = TRUE) %>%
   unlist(use.names = FALSE)
 
@@ -471,11 +498,8 @@ make_heatmap_for_genes(
   out_png_path = out_png_targets,
   crispr_ovary_all_obj = crispr_ovary_all,
   cellline_groups_df = cellline_groups,
-  highlight_genes_vec = highlight_genes  # will label these if present (optional)
+  highlight_genes_vec = highlight_genes,
+  split_by_group = FALSE  # IMPORTANT: avoid group gaps/"spaces"
 )
 
 cat("Done: extra MR/target heatmaps.\n")
-
-
-
-
