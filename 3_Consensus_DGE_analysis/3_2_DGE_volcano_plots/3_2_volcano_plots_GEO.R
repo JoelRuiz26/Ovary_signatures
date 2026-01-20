@@ -288,30 +288,14 @@ make_meta_volcano_consistent <- function(all_long_df, out_pdf) {
   
   p <- ggplot(meta, aes(x = x_fc, y = y_nl)) +
     # Todos en gris
-    geom_point(color = "gray78", size = 0.65, alpha = 0.55) +
-    
-    # Rangos SOLO para comunes-consistentes
-    geom_segment(
-      data = meta_hi,
-      aes(x = fc_min, xend = fc_max, y = y_nl, yend = y_nl),
-      inherit.aes = FALSE,
-      linewidth = 0.55,
-      alpha = 0.95
-    ) +
-    geom_segment(
-      data = meta_hi,
-      aes(x = x_fc, xend = x_fc, y = nl_min, yend = nl_max),
-      inherit.aes = FALSE,
-      linewidth = 0.55,
-      alpha = 0.95
-    ) +
+    geom_point(color = "gray75", size = 0.40, alpha = 0.35) +
     
     # Puntos coloreados SOLO para comunes-consistentes
     geom_point(
       data = meta_hi,
       aes(color = color_class),
-      size = 1.25,
-      alpha = 0.98
+      size = 1.10,
+      alpha = 0.95
     ) +
     
     # Umbrales (referencia)
