@@ -60,6 +60,7 @@ clean_description <- function(df, db_name) {
 }
 
 # Barplot (ordenado por NES_mean: mayor -> menor)
+# Barplot (ordenado por NES_mean: mayor -> menor)
 plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
   if (nrow(top_tbl) == 0) {
@@ -67,15 +68,10 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
     return(invisible(NULL))
   }
   
-  # ORDEN CORRECTO: NES_mean descendente (visual y estadístico)
   dfp <- top_tbl %>%
-    mutate(
-      neglog10_fdr = -log10(padj_min)
-    ) %>%
+    mutate(neglog10_fdr = -log10(padj_min)) %>%
     arrange(desc(NES_mean)) %>%
-    mutate(
-      Description = factor(Description, levels = Description)
-    )
+    mutate(Description = factor(Description, levels = Description))
   
   p <- ggplot(dfp, aes(
     x = NES_mean,
@@ -102,10 +98,15 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
   ggsave(out_png, p,
          width = 11, height = 8.5, units = "in",
-         dpi = 600)
+         dpi = 600,
+         device = "png",
+         bg = "white")
+  
+  if (!file.exists(out_png)) warning("NO se guardó PNG: ", out_png)
   
   invisible(p)
 }
+
 
 
 # ===================== MAIN LOOP ===================== #
