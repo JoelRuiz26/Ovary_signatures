@@ -26,7 +26,7 @@ out_dir <- file.path(base_dir, "4_GSEA", "4_0_WIKIPATHWAYS")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
 # Use 0.01 as requested/consistent with your other scripts
-p_cut <- 0.01
+p_cut <- 0.05
 
 read_rds_safe <- function(p) {
   if (!file.exists(p)) stop("No existe el archivo: ", p)
@@ -65,7 +65,7 @@ make_rank_stat <- function(df, stat_col = "stat", id_col = "GeneID") {
   geneList
 }
 
-run_gsea_wp <- function(geneList, p_cut = 0.01) {
+run_gsea_wp <- function(geneList, p_cut = 0.05) {
   gsea <- GSEA(
     geneList     = geneList,
     TERM2GENE    = TERM2GENE_WP,
@@ -82,7 +82,7 @@ run_gsea_wp <- function(geneList, p_cut = 0.01) {
   list(gsea = gsea, full = gsea_df, sig = gsea_sig)
 }
 
-plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.01) {
+plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.05) {
   if (nrow(gsea_df) == 0) {
     message("No hay resultados para plot: ", subtitle)
     return(invisible(NULL))
@@ -149,11 +149,11 @@ plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0
   invisible(p)
 }
 
-save_outputs <- function(prefix, subtitle, res_list, p_cut = 0.01) {
+save_outputs <- function(prefix, subtitle, res_list, p_cut = 0.05) {
   
   # Updated file naming to match your newer convention
   full_tsv <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_FULL.tsv"))
-  sig_tsv  <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_SIG_0.01.tsv"))
+  sig_tsv  <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_SIG_0.05.tsv"))
   pdf_top  <- file.path(out_dir, paste0(prefix, "_WIKIPATHWAYS_top20.pdf"))
   
   write_tsv(res_list$full, full_tsv)

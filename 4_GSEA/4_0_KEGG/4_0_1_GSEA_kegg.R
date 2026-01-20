@@ -48,7 +48,7 @@ make_rank_stat <- function(df, stat_col = "stat", id_col = "GeneID") {
   geneList
 }
 
-run_gsea_kegg <- function(geneList, p_cut = 0.01) {
+run_gsea_kegg <- function(geneList, p_cut = 0.05) {
   gsea <- gseKEGG(
     geneList     = geneList,
     organism     = "hsa",
@@ -64,7 +64,7 @@ run_gsea_kegg <- function(geneList, p_cut = 0.01) {
   list(gsea = gsea, full = gsea_df, sig = gsea_sig)
 }
 
-plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.01) {
+plot_top20_up_down <- function(gsea_df, main_title, subtitle, out_pdf, p_cut = 0.05) {
   
   dfp <- gsea_df %>%
     filter(!is.na(NES), !is.na(p.adjust), p.adjust < p_cut) %>%
@@ -124,7 +124,7 @@ save_outputs <- function(prefix, subtitle, res_list) {
   write_tsv(res_list$full,
             file.path(out_dir, paste0(prefix, "_KEGG_FULL.tsv")))
   write_tsv(res_list$sig,
-            file.path(out_dir, paste0(prefix, "_KEGG_SIG_0.01.tsv")))
+            file.path(out_dir, paste0(prefix, "_KEGG_SIG_0.05.tsv")))
   
   plot_top20_up_down(
     gsea_df    = res_list$full,
