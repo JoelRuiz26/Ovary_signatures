@@ -70,7 +70,7 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   dfp <- top_tbl %>%
     mutate(neglog10_fdr = -log10(padj_min)) %>%
     arrange(desc(NES_mean)) %>%
-    mutate(Description = factor(Description, levels = Description))
+    mutate(Description = factor(Description, levels = rev(Description)))
   
   p <- ggplot(dfp, aes(
     x = NES_mean,
@@ -229,9 +229,9 @@ for (db in names(dbs)) {
   
   plot_bar_top(
     top_tbl = top_terms,
-    title_txt = paste0("Top ", top_n, " UP + Top ", top_n, " DOWN ", db,
+    title_txt = paste0("Top ", db,
                        " terms shared in ≥", min_k, " datasets"),
-    subtitle_txt = paste0("UP: highest NES_mean. DOWN: lowest NES_mean. (FDR<", fdr_tag, ")."),
+    subtitle_txt = paste0("(FDR<", fdr_tag, ")."),
     out_pdf = bar_pdf,
     out_png = bar_png
   )

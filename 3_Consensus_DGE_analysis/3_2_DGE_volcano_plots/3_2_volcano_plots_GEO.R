@@ -238,93 +238,87 @@ build_all_long <- function(raw_df, ae_df, GEO_full) {
 
 make_meta_volcano_consistent <- function(all_long_df, out_pdf) {
   
-  # resumen por gen + rangos
-  meta <- all_long_df %>%
+  # 1) RANGOS por gen en todos los datasets + consistencia de dirección
+  meta_ranges <- all_long_df %>%
     group_by(Gene) %>%
     summarise(
       n_datasets = n_distinct(Dataset),
-      
-      # summary fold-change
-      summary_fc = mean(log2FoldChange, na.rm = TRUE),
-      
-      # summary p-value (Fisher)
-      summary_p = combine_p_fisher(padj_used),
-      summary_neglog10 = -log10(pmax(summary_p, p_floor)),
-      
-      # rangos
       fc_min = min(log2FoldChange, na.rm = TRUE),
       fc_max = max(log2FoldChange, na.rm = TRUE),
       nl_min = min(neglog10, na.rm = TRUE),
       nl_max = max(neglog10, na.rm = TRUE),
-      
-      # consistencia de signo (solo donde aparece)
       all_pos = all(log2FoldChange > 0, na.rm = TRUE),
       all_neg = all(log2FoldChange < 0, na.rm = TRUE),
-      
       .groups = "drop"
     ) %>%
     mutate(
-      summary_neglog10 = pmin(summary_neglog10, max_neglog10),
-      
       dir = case_when(
         all_pos ~ "Up",
         all_neg ~ "Down",
         TRUE ~ "Mixed"
       ),
-      
-      # Solo colorea si:
-      #  - presente en >= min_consistent_n datasets
-      #  - dirección consistente (Up/Down)
-      #  - pasa umbrales globales en el "meta"
-      highlight = (n_datasets >= min_consistent_n) &
-        (dir %in% c("Up","Down")) &
-        (summary_p < padj_cut) &
-        (abs(summary_fc) >= lfc_cut),
-      
+      common_consistent = (n_datasets >= min_consistent_n) & (dir %in% c("Up", "Down")),
       color_class = case_when(
-        highlight & dir == "Up"   ~ "Consistent Up",
-        highlight & dir == "Down" ~ "Consistent Down",
+        common_consistent & dir == "Up"   ~ "Common Up",
+        common_consistent & dir == "Down" ~ "Common Down",
         TRUE ~ "Other"
       ),
-      
       is_adenosine = Gene %in% adenosine_genes
     )
   
-  meta_hi <- meta %>% filter(color_class != "Other")
+  # 2) PUNTO ÚNICO POR GEN (evitar duplicados):
+  #    - x: logFC con mayor |logFC|
+  #    - y: neglog10 máximo (mayor significancia)
+  #    Nota: se calcula desde all_long_df (punto "más extremo" observado)
+  meta_point <- all_long_df %>%
+    group_by(Gene) %>%
+    summarise(
+      x_fc = log2FoldChange[which.max(abs(log2FoldChange))],
+      y_nl = max(neglog10, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      y_nl = pmin(y_nl, max_neglog10)
+    )
   
-  p <- ggplot(meta, aes(x = summary_fc, y = summary_neglog10)) +
+  meta <- meta_ranges %>%
+    inner_join(meta_point, by = "Gene")
+  
+  meta_hi <- meta %>% filter(common_consistent)
+  
+  p <- ggplot(meta, aes(x = x_fc, y = y_nl)) +
     # Todos en gris
-    geom_point(color = "gray75", size = 0.7, alpha = 0.65) +
+    geom_point(color = "gray78", size = 0.65, alpha = 0.55) +
     
-    # Rangos SOLO para los consistentes
+    # Rangos SOLO para comunes-consistentes
     geom_segment(
       data = meta_hi,
-      aes(x = fc_min, xend = fc_max, y = summary_neglog10, yend = summary_neglog10),
+      aes(x = fc_min, xend = fc_max, y = y_nl, yend = y_nl),
       inherit.aes = FALSE,
       linewidth = 0.55,
       alpha = 0.95
     ) +
     geom_segment(
       data = meta_hi,
-      aes(x = summary_fc, xend = summary_fc, y = nl_min, yend = nl_max),
+      aes(x = x_fc, xend = x_fc, y = nl_min, yend = nl_max),
       inherit.aes = FALSE,
       linewidth = 0.55,
       alpha = 0.95
     ) +
     
-    # Puntos coloreados SOLO para consistentes
+    # Puntos coloreados SOLO para comunes-consistentes
     geom_point(
       data = meta_hi,
       aes(color = color_class),
-      size = 1.3,
-      alpha = 0.95
+      size = 1.25,
+      alpha = 0.98
     ) +
     
-    # Umbrales globales (meta)
+    # Umbrales (referencia)
     geom_vline(xintercept = c(-lfc_cut, lfc_cut), linetype = "dashed", linewidth = 0.4) +
     geom_hline(yintercept = -log10(padj_cut),     linetype = "dashed", linewidth = 0.4) +
     
-    # Etiqueta adenosina (solo si además es highlight; puedes cambiarlo si quieres)
+    # Etiquetas (solo adenosina dentro de comunes-consistentes)
     ggrepel::geom_label_repel(
       data = meta_hi %>% filter(is_adenosine),
       aes(label = Gene),
@@ -336,19 +330,18 @@ make_meta_volcano_consistent <- function(all_long_df, out_pdf) {
     ) +
     
     scale_color_manual(values = c(
-      "Consistent Up"   = "red",
-      "Consistent Down" = "blue"
+      "Common Up"   = "red",
+      "Common Down" = "blue"
     )) +
     labs(
       title = "Meta-volcano (GTEx + AE + GEO)",
       subtitle = paste0(
-        "Only colored genes: consistent direction across datasets (n≥", min_consistent_n,
-        "), meta p<", padj_cut, ", |meta FC|≥", lfc_cut,
-        ". Lines show ranges across datasets."
+        "Gray: all genes (one point per gene). Colored: genes present in ≥", min_consistent_n,
+        " datasets with consistent direction. Lines show ranges across datasets."
       ),
-      x = "Summary Fold-change (mean log2FC across datasets present)",
-      y = "-log10(Summary p-value) (Fisher on padj_used)",
-      color = "Direction"
+      x = "log2FC (picked as max |log2FC| across datasets)",
+      y = "-log10(padj) (picked as max across datasets)",
+      color = "Common genes"
     ) +
     theme_bw(base_size = 13) +
     theme(panel.grid.minor = element_blank())
@@ -357,6 +350,7 @@ make_meta_volcano_consistent <- function(all_long_df, out_pdf) {
   out_png <- sub("\\.pdf$", ".png", out_pdf)
   ggsave(out_png, p, width = 9.2, height = 6.6, dpi = 600, device = "png")
 }
+
 
 # ===================== RUN ===================== #
 raw_df <- prep_df(read_rds_safe(paths$raw))
