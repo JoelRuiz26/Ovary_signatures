@@ -449,8 +449,8 @@ mr_tf_unique <- masters_reg %>%
   dplyr::slice_head(n = 1) %>%
   dplyr::ungroup()
 
-top5_high <- mr_tf_unique %>% dplyr::arrange(dplyr::desc(NES)) %>% dplyr::slice_head(n = 5)
-top5_low  <- mr_tf_unique %>% dplyr::arrange(NES) %>% dplyr::slice_head(n = 5)
+top5_high <- mr_tf_unique %>% dplyr::arrange(dplyr::desc(NES)) %>% dplyr::slice_head(n = 10)
+top5_low  <- mr_tf_unique %>% dplyr::arrange(NES) %>% dplyr::slice_head(n = 10)
 
 tfs_10 <- unique(toupper(c(top5_high$TF, top5_low$TF)))
 
