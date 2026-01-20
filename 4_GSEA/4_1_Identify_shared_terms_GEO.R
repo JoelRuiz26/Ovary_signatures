@@ -184,7 +184,7 @@ for (db in names(dbs)) {
   
   # --------- Tabla resumen + Top 20 ---------
   term_summary <- all_long_df %>%
-    semi_join(inc_k %>% select(Description), by = "Description") %>%
+    semi_join(inc_k %>% dplyr::select(Description), by = "Description") %>%
     group_by(Description) %>%
     summarise(
       n_datasets   = n_distinct(Dataset),
