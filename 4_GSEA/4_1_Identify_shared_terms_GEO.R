@@ -116,6 +116,7 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
 }
 
 # ===================== MAIN LOOP ===================== #
+# ===================== MAIN LOOP ===================== #
 for (db in names(dbs)) {
   
   message("\n==============================")
@@ -189,7 +190,7 @@ for (db in names(dbs)) {
   
   message("Términos con presencia en >= ", min_k, " datasets: ", nrow(inc_k))
   
-  # --------- Tabla resumen + Top 20 ---------
+  # --------- Tabla resumen + Top UP y Top DOWN (cambio mínimo) ---------
   term_summary <- all_long_df %>%
     semi_join(inc_k %>% dplyr::select(Description), by = "Description") %>%
     group_by(Description) %>%
@@ -199,23 +200,38 @@ for (db in names(dbs)) {
       NES_mean     = mean(NES, na.rm = TRUE),
       NES_abs_mean = mean(abs(NES), na.rm = TRUE),
       .groups = "drop"
-    ) %>%
-    arrange(desc(n_datasets), padj_min, desc(NES_abs_mean))
+    )
   
-  top_terms <- term_summary %>% slice_head(n = top_n)
+  # Top positivos: NES_mean alto
+  top_up <- term_summary %>%
+    filter(NES_mean > 0) %>%
+    arrange(desc(NES_mean), padj_min, desc(n_datasets)) %>%
+    slice_head(n = top_n)
   
-  out_tsv <- file.path(shared_dir, paste0(db, "_Top", top_n, "_terms_shared_ge_", min_k, "_datasets.tsv"))
+  # Top negativos: NES_mean más negativo
+  top_down <- term_summary %>%
+    filter(NES_mean < 0) %>%
+    arrange(NES_mean, padj_min, desc(n_datasets)) %>%
+    slice_head(n = top_n)
+  
+  # Junta (hasta 2*top_n términos)
+  top_terms <- bind_rows(top_up, top_down) %>%
+    distinct(Description, .keep_all = TRUE)
+  
+  out_tsv <- file.path(shared_dir, paste0(db, "_Top", top_n, "_UP_and_Top", top_n,
+                                          "_DOWN_terms_shared_ge_", min_k, "_datasets.tsv"))
   write_tsv(top_terms, out_tsv)
   
   # --------- Barplot (ordenado) ---------
-  bar_pdf <- file.path(shared_dir, paste0(db, "_Top", top_n, "_bar_shared_ge_", min_k, ".pdf"))
+  bar_pdf <- file.path(shared_dir, paste0(db, "_Top", top_n, "_UP_and_Top", top_n,
+                                          "_DOWN_bar_shared_ge_", min_k, ".pdf"))
   bar_png <- sub("\\.pdf$", ".png", bar_pdf, ignore.case = TRUE)
   
   plot_bar_top(
     top_tbl = top_terms,
-    title_txt = paste0("Top ", top_n, " ", db, " terms shared in ≥", min_k, " datasets"),
-    subtitle_txt = paste0("Ranking: n_datasets desc, min FDR asc, |NES| mean desc (FDR<", fdr_tag,
-                          ")."),
+    title_txt = paste0("Top ", top_n, " UP + Top ", top_n, " DOWN ", db,
+                       " terms shared in ≥", min_k, " datasets"),
+    subtitle_txt = paste0("UP: highest NES_mean. DOWN: lowest NES_mean. (FDR<", fdr_tag, ")."),
     out_pdf = bar_pdf,
     out_png = bar_png
   )
@@ -225,5 +241,6 @@ for (db in names(dbs)) {
   message("  Barplot: ", bar_pdf)
   message("  Barplot: ", bar_png)
 }
+
 
 message("\nDONE: Top terms + Barplots for KEGG/Reactome/WikiPathways (GEO+GTEx+AE).")
