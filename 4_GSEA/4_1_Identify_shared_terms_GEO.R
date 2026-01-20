@@ -60,7 +60,6 @@ clean_description <- function(df, db_name) {
 }
 
 # Barplot (ordenado por NES_mean: mayor -> menor)
-# Barplot (ordenado por NES_mean: mayor -> menor)
 plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
   if (nrow(top_tbl) == 0) {
@@ -92,6 +91,10 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
       axis.text.y = element_text(face = "bold")
     )
   
+  # Asegura directorio (por si acaso)
+  dir.create(dirname(out_pdf), recursive = TRUE, showWarnings = FALSE)
+  dir.create(dirname(out_png), recursive = TRUE, showWarnings = FALSE)
+  
   ggsave(out_pdf, p,
          width = 11, height = 8.5, units = "in",
          device = cairo_pdf)
@@ -102,12 +105,15 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
          device = "png",
          bg = "white")
   
-  if (!file.exists(out_png)) warning("NO se guardó PNG: ", out_png)
+  # --- Verificación dura (cambio mínimo pero útil) ---
+  if (!file.exists(out_png)) {
+    stop("NO se guardó PNG: ", out_png)
+  } else {
+    message("  OK PNG: ", out_png)
+  }
   
   invisible(p)
 }
-
-
 
 # ===================== MAIN LOOP ===================== #
 for (db in names(dbs)) {
@@ -217,6 +223,7 @@ for (db in names(dbs)) {
   message("Saved:")
   message("  Top terms TSV: ", out_tsv)
   message("  Barplot: ", bar_pdf)
+  message("  Barplot: ", bar_png)
 }
 
 message("\nDONE: Top terms + Barplots for KEGG/Reactome/WikiPathways (GEO+GTEx+AE).")
