@@ -265,6 +265,9 @@ cat("Done.\n")
 
 
 
+
+
+
 # ============================================================
 # ========== EXTRA HEATMAPS: Master Regulators / Targets ======
 # Requirements:
@@ -272,10 +275,9 @@ cat("Done.\n")
 #    - Only rows with core_signature_score NOT NA
 #    - If TF repeats, keep best (smallest) rank_by_interest
 # B) ONE heatmap with ALL unique interest_target_genes
-# Notes:
-# - Uses crispr_ovary_all (already normalized importance_m11 in [-1,1])
-# - Fixes "spaces" by preserving main column order (NO intersect sorting)
-# - For targets heatmap: DO NOT split columns by ovary_group (avoid gaps)
+# Fix:
+# - remove "spaces"/white seams by rasterizing + cairo png device
+# - NA diagnostics printed inside helper (no need for mat2 in global env)
 # ============================================================
 
 # -------------------- Load MR table -------------------- #
@@ -290,7 +292,7 @@ make_heatmap_for_genes <- function(genes_vec,
                                    crispr_ovary_all_obj,
                                    cellline_groups_df,
                                    highlight_genes_vec = character(0),
-                                   split_by_group = FALSE,   # IMPORTANT: default FALSE to avoid "gaps"
+                                   split_by_group = FALSE,
                                    cluster_rows = TRUE,
                                    cluster_columns = TRUE) {
   
@@ -317,7 +319,7 @@ make_heatmap_for_genes <- function(genes_vec,
     dplyr::mutate(cell = sub("_OVARY$", "", cell_line)) %>%
     dplyr::select(gene, cell, importance_m11)
   
-  # matrix
+  # Build matrix (genes x cells)
   mat_df2 <- df_plot %>%
     dplyr::distinct(gene, cell, .keep_all = TRUE) %>%
     tidyr::pivot_wider(names_from = cell, values_from = importance_m11)
@@ -327,14 +329,14 @@ make_heatmap_for_genes <- function(genes_vec,
   mat2$gene <- NULL
   mat2 <- as.matrix(mat2)
   
-  # ---- FIX 1: preserve main heatmap column order (avoid intersect sorting) ----
+  # preserve main heatmap column order EXACTLY (no intersect sorting)
   if (exists("mat") && is.matrix(get("mat"))) {
     main_cols <- colnames(get("mat"))
-    common_cols <- main_cols[main_cols %in% colnames(mat2)]  # preserves order
+    common_cols <- main_cols[main_cols %in% colnames(mat2)]
     mat2 <- mat2[, common_cols, drop = FALSE]
   }
   
-  # Column group annotation (aligned to mat2 columns)
+  # Column group annotation aligned to mat2 columns
   col_grp2 <- cellline_groups_df %>%
     dplyr::mutate(cell = sub("_OVARY$", "", cell_line)) %>%
     dplyr::select(cell, ovary_group) %>%
@@ -342,14 +344,28 @@ make_heatmap_for_genes <- function(genes_vec,
     as.data.frame()
   rownames(col_grp2) <- col_grp2$cell
   col_grp2$cell <- NULL
-  
-  # ensure col_grp2 order matches mat2 columns
   col_grp2 <- col_grp2[colnames(mat2), , drop = FALSE]
+  
+  # diagnostics: NA count and per-column NA
+  na_total <- sum(is.na(mat2))
+  na_by_col <- colSums(is.na(mat2))
+  cat("\n[", basename(out_png_path), "] NA total in matrix: ", na_total, "\n", sep = "")
+  if (any(na_by_col > 0)) {
+    cat("[", basename(out_png_path), "] Columns with NA:\n", sep = "")
+    print(na_by_col[na_by_col > 0])
+  }
+  
+  # If you want ZERO gaps from missing values for visualization:
+  # (does NOT affect your global normalization; only drawing)
+  if (na_total > 0) {
+    mat2[is.na(mat2)] <- 0
+    cat("[", basename(out_png_path), "] Filled NA with 0 for visualization.\n", sep = "")
+  }
   
   # fixed colors [-1,1]
   col_fun2 <- circlize::colorRamp2(c(-1, 0, 1), c("#2C7BB6", "white", "#D7191C"))
   
-  # group colors (reuse if already defined)
+  # group colors (reuse if exist)
   if (!exists("grp_cols")) {
     grp_levels2 <- unique(col_grp2$ovary_group)
     grp_cols2 <- setNames(
@@ -373,22 +389,17 @@ make_heatmap_for_genes <- function(genes_vec,
   if (length(highlight_genes_vec) > 0) {
     hl2 <- intersect(toupper(highlight_genes_vec), genes_present2)
     row_labels2 <- ifelse(genes_present2 %in% hl2, genes_present2, "")
-    show_row_names2 <- TRUE
-    row_names_gp2 <- gpar(fontsize = 9)
   } else {
     row_labels2 <- genes_present2
-    show_row_names2 <- TRUE
-    row_names_gp2 <- gpar(fontsize = 9)
   }
   
-  # Optional split: if TRUE, split columns by group (introduces gaps by design)
   col_split <- if (split_by_group) col_grp2$ovary_group else NULL
   
   ht2 <- ComplexHeatmap::Heatmap(
     mat2,
     name = "Importance\n(-1 to 1)",
     col = col_fun2,
-    na_col = "grey90",
+    na_col = "grey80",
     top_annotation = ca2,
     column_split = col_split,
     cluster_column_slices = if (split_by_group) TRUE else FALSE,
@@ -397,8 +408,8 @@ make_heatmap_for_genes <- function(genes_vec,
     show_row_dend = TRUE,
     show_column_dend = TRUE,
     row_labels = row_labels2,
-    show_row_names = show_row_names2,
-    row_names_gp = row_names_gp2,
+    show_row_names = TRUE,
+    row_names_gp = gpar(fontsize = 9),
     show_column_names = TRUE,
     column_names_gp = gpar(fontsize = 8),
     column_title = title,
@@ -407,33 +418,36 @@ make_heatmap_for_genes <- function(genes_vec,
       title_gp = gpar(fontsize = 10, fontface = "bold"),
       labels_gp = gpar(fontsize = 9),
       at = c(-1, -0.5, 0, 0.5, 1)
-    )
+    ),
+    # === seam killer ===
+    rect_gp = gpar(col = NA),
+    border = FALSE,
+    use_raster = TRUE,
+    raster_quality = 4,
+    raster_device = "png"
   )
   
-  # save
+  # -------------------- Save PDF -------------------- #
   pdf(out_pdf_path, width = 12, height = max(6, 0.25 * nrow(mat2) + 4), useDingbats = FALSE)
   grid.newpage()
   draw(ht2, heatmap_legend_side = "right", annotation_legend_side = "right")
   dev.off()
   cat("Saved: ", out_pdf_path, "\n", sep = "")
   
-  png(out_png_path, width = 3600, height = 1800 + 120 * nrow(mat2), res = 300)
+  # -------------------- Save PNG (use cairo to avoid white seams) -------------------- #
+  png(out_png_path, width = 3600, height = 1800 + 120 * nrow(mat2), res = 300, type = "cairo")
   grid.newpage()
   draw(ht2, heatmap_legend_side = "right", annotation_legend_side = "right")
   dev.off()
   cat("Saved: ", out_png_path, "\n", sep = "")
   
-  # quick NA check
-  cat("NA count in heatmap matrix: ", sum(is.na(mat2)), "\n", sep = "")
-  
   invisible(list(mat = mat2, ht = ht2))
 }
 
 # ============================================================
-# (A) TF heatmap: Top5 NES high + Top5 NES low in ONE heatmap
+# (A) ONE TF heatmap: Top5 NES high + Top5 NES low (same plot)
 # ============================================================
 
-# unique TF entries with core_signature_score not NA
 mr_tf_unique <- masters_reg %>%
   dplyr::filter(!is.na(core_signature_score)) %>%
   dplyr::arrange(rank_by_interest) %>%
@@ -441,13 +455,8 @@ mr_tf_unique <- masters_reg %>%
   dplyr::slice_head(n = 1) %>%
   dplyr::ungroup()
 
-top5_high <- mr_tf_unique %>%
-  dplyr::arrange(dplyr::desc(NES)) %>%
-  dplyr::slice_head(n = 5)
-
-top5_low <- mr_tf_unique %>%
-  dplyr::arrange(NES) %>%
-  dplyr::slice_head(n = 5)
+top5_high <- mr_tf_unique %>% dplyr::arrange(dplyr::desc(NES)) %>% dplyr::slice_head(n = 5)
+top5_low  <- mr_tf_unique %>% dplyr::arrange(NES) %>% dplyr::slice_head(n = 5)
 
 cat("\nTop 5 TFs by highest NES (core_signature_score not NA):\n")
 print(top5_high %>% dplyr::select(TF, NES, rank_by_interest, core_signature_score, TF_expression_status))
@@ -467,11 +476,11 @@ make_heatmap_for_genes(
   out_png_path = out_png_tf10,
   crispr_ovary_all_obj = crispr_ovary_all,
   cellline_groups_df = cellline_groups,
-  split_by_group = TRUE   # TF plot: OK to split (scientific grouping)
+  split_by_group = TRUE
 )
 
 # ============================================================
-# (B) Targets heatmap: ALL unique interest_target_genes (NO SPLIT)
+# (B) Targets heatmap: ALL unique interest_target_genes (NO split)
 # ============================================================
 
 all_targets <- masters_reg %>%
@@ -499,7 +508,10 @@ make_heatmap_for_genes(
   crispr_ovary_all_obj = crispr_ovary_all,
   cellline_groups_df = cellline_groups,
   highlight_genes_vec = highlight_genes,
-  split_by_group = FALSE  # IMPORTANT: avoid group gaps/"spaces"
+  split_by_group = FALSE,
+  cluster_rows = TRUE,
+  cluster_columns = TRUE
 )
 
 cat("Done: extra MR/target heatmaps.\n")
+
