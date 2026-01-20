@@ -4,6 +4,7 @@ suppressPackageStartupMessages({
   library(dplyr)
   library(readr)
   library(ggplot2)
+  library(tidyr)
 })
 
 options(stringsAsFactors = FALSE)
@@ -58,56 +59,7 @@ clean_description <- function(df, db_name) {
   df
 }
 
-# ---- UpSet plot (intenta ComplexUpset; si no, usa UpSetR) ----
-plot_upset_safe <- function(inc_df, set_cols, title_txt, out_pdf, out_png) {
-  
-  if (requireNamespace("ComplexUpset", quietly = TRUE)) {
-    p <- ComplexUpset::upset(
-      inc_df,
-      intersect = set_cols,
-      name = "Intersection",
-      width_ratio = 0.15
-    ) +
-      ggplot2::labs(title = title_txt)
-    
-    ggplot2::ggsave(out_pdf, p, width = 12, height = 6, units = "in", device = cairo_pdf)
-    ggplot2::ggsave(out_png, p, width = 12, height = 6, units = "in", dpi = 600)
-    return(invisible(TRUE))
-  }
-  
-  if (requireNamespace("UpSetR", quietly = TRUE)) {
-    grDevices::pdf(out_pdf, width = 12, height = 6)
-    UpSetR::upset(
-      inc_df,
-      sets = set_cols,
-      keep.order = TRUE,
-      order.by = "freq",
-      mainbar.y.label = "Intersection size",
-      sets.x.label = "Set size"
-    )
-    grDevices::dev.off()
-    
-    grDevices::png(out_png, width = 12, height = 6, units = "in", res = 600)
-    UpSetR::upset(
-      inc_df,
-      sets = set_cols,
-      keep.order = TRUE,
-      order.by = "freq",
-      mainbar.y.label = "Intersection size",
-      sets.x.label = "Set size"
-    )
-    grDevices::dev.off()
-    return(invisible(TRUE))
-  }
-  
-  warning("No está instalado ComplexUpset ni UpSetR. Instala uno:\n",
-          "  install.packages('ComplexUpset')  # recomendado\n",
-          "  # o\n  install.packages('UpSetR')\n",
-          "No se generó el UpSet plot.")
-  invisible(FALSE)
-}
-
-# ---- Barplot para top shared terms ----
+# Barplot (ordenado)
 plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
   if (nrow(top_tbl) == 0) {
@@ -115,12 +67,13 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
     return(invisible(NULL))
   }
   
+  # ORDEN: barras en orden por NES_mean (desc)
   dfp <- top_tbl %>%
     mutate(
-      neglog10_fdr = -log10(padj_min),
-      # orden: del "peor" al "mejor" para que en el plot salga "mejor arriba"
-      Description = factor(Description, levels = rev(Description))
-    )
+      neglog10_fdr = -log10(padj_min)
+    ) %>%
+    arrange(desc(NES_mean)) %>%
+    mutate(Description = factor(Description, levels = rev(Description)))
   
   p <- ggplot(dfp, aes(
     x = NES_mean,
@@ -151,7 +104,7 @@ plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
 for (db in names(dbs)) {
   
   message("\n==============================")
-  message("Processing ", db, " (UpSet + top shared >= ", min_k, ") ...")
+  message("Processing ", db, " (top shared >= ", min_k, ") ...")
   message("==============================")
   
   db_dir <- file.path(base_dir, dbs[[db]])
@@ -167,17 +120,21 @@ for (db in names(dbs)) {
   
   geo_prefixes <- character()
   if (length(geo_sig_files) > 0) {
-    geo_prefixes <- unique(sub(paste0("_[A-Z]+_SIG_", gsub("\\.", "\\\\.", fdr_tag), "\\.tsv$"), "", geo_sig_files))
+    geo_prefixes <- unique(sub(
+      paste0("_[A-Z]+_SIG_", gsub("\\.", "\\\\.", fdr_tag), "\\.tsv$"),
+      "",
+      geo_sig_files
+    ))
     geo_prefixes <- geo_prefixes[grepl("^GEO_", geo_prefixes)]
   }
   
-  # ====== CAMBIO PEQUEÑO: ORDEN CONSISTENTE ======
-  # Orden deseado: GEO_* (ordenado) + GTEx + AE
+  # Orden deseado: GEO (ordenado) -> GTEx -> AE
   dataset_prefixes <- c(sort(geo_prefixes), "GTEx", "AE")
   message("Datasets detectados (orden): ", paste(dataset_prefixes, collapse = ", "))
   
   # --------- Cargar todos los SIG ---------
   all_long <- list()
+  
   for (pref in dataset_prefixes) {
     df <- load_sig(db_dir, pref, fdr_tag = fdr_tag) %>%
       clean_description(., db) %>%
@@ -187,19 +144,18 @@ for (db in names(dbs)) {
         NES = as.numeric(NES),
         p.adjust = as.numeric(p.adjust)
       ) %>%
-      filter(!is.na(Description), Description != "", !is.na(NES), is.finite(NES),
-             !is.na(p.adjust), is.finite(p.adjust))
+      filter(
+        !is.na(Description), Description != "",
+        !is.na(NES), is.finite(NES),
+        !is.na(p.adjust), is.finite(p.adjust)
+      )
     
     all_long[[pref]] <- df
   }
+  
   all_long_df <- bind_rows(all_long)
   
-  # --------- Incidencia (término presente / ausente por dataset) ---------
-  if (!requireNamespace("tidyr", quietly = TRUE)) {
-    stop("Falta el paquete 'tidyr' para construir la matriz de incidencia. Instala:\n",
-         "  install.packages('tidyr')\n")
-  }
-  
+  # --------- Incidencia para filtrar términos en >= min_k datasets ---------
   inc <- all_long_df %>%
     distinct(Dataset, Description) %>%
     mutate(present = 1L) %>%
@@ -209,42 +165,23 @@ for (db in names(dbs)) {
       values_fill = 0L
     )
   
-  # Orden de columnas para UpSet (igual que dataset_prefixes)
   set_cols <- dataset_prefixes
   
-  # Calcula cuántos datasets contienen cada término
   inc <- inc %>%
     mutate(n_datasets = rowSums(across(all_of(set_cols))))
   
-  # Filtra términos compartidos por >= min_k datasets
   inc_k <- inc %>% filter(n_datasets >= min_k)
   
   message("Términos con presencia en >= ", min_k, " datasets: ", nrow(inc_k))
   
-  # --------- UpSet plot (solo términos >= min_k) ---------
-  upset_pdf <- file.path(shared_dir, paste0(db, "_UpSet_shared_ge_", min_k, "_of_", length(set_cols), ".pdf"))
-  upset_png <- sub("\\.pdf$", ".png", upset_pdf, ignore.case = TRUE)
-  
-  inc_plot <- inc_k %>%
-    select(all_of(set_cols)) %>%
-    mutate(across(everything(), ~ as.integer(.x > 0)))
-  
-  plot_upset_safe(
-    inc_df   = inc_plot,
-    set_cols = set_cols,
-    title_txt = paste0(db, " | terms shared in \u2265", min_k, " / ", length(set_cols), " datasets (FDR<", fdr_tag, ")"),
-    out_pdf  = upset_pdf,
-    out_png  = upset_png
-  )
-  
-  # --------- Tabla resumen y Top 20 ---------
+  # --------- Tabla resumen + Top 20 ---------
   term_summary <- all_long_df %>%
     semi_join(inc_k %>% select(Description), by = "Description") %>%
     group_by(Description) %>%
     summarise(
-      n_datasets = n_distinct(Dataset),
-      padj_min   = min(p.adjust, na.rm = TRUE),
-      NES_mean   = mean(NES, na.rm = TRUE),
+      n_datasets   = n_distinct(Dataset),
+      padj_min     = min(p.adjust, na.rm = TRUE),
+      NES_mean     = mean(NES, na.rm = TRUE),
       NES_abs_mean = mean(abs(NES), na.rm = TRUE),
       .groups = "drop"
     ) %>%
@@ -255,22 +192,22 @@ for (db in names(dbs)) {
   out_tsv <- file.path(shared_dir, paste0(db, "_Top", top_n, "_terms_shared_ge_", min_k, "_datasets.tsv"))
   write_tsv(top_terms, out_tsv)
   
-  # --------- BARPLOT (en lugar de bubble) ---------
+  # --------- Barplot (ordenado) ---------
   bar_pdf <- file.path(shared_dir, paste0(db, "_Top", top_n, "_bar_shared_ge_", min_k, ".pdf"))
   bar_png <- sub("\\.pdf$", ".png", bar_pdf, ignore.case = TRUE)
   
   plot_bar_top(
     top_tbl = top_terms,
-    title_txt = paste0("Top ", top_n, " ", db, " terms shared in \u2265", min_k, " datasets"),
-    subtitle_txt = paste0("Ranking: n_datasets desc, min FDR asc, |NES| mean desc (FDR<", fdr_tag, ")"),
+    title_txt = paste0("Top ", top_n, " ", db, " terms shared in ≥", min_k, " datasets"),
+    subtitle_txt = paste0("Ranking: n_datasets desc, min FDR asc, |NES| mean desc (FDR<", fdr_tag,
+                          "). Bars ordered by NES_mean."),
     out_pdf = bar_pdf,
     out_png = bar_png
   )
   
   message("Saved:")
-  message("  UpSet: ", upset_pdf)
   message("  Top terms TSV: ", out_tsv)
   message("  Barplot: ", bar_pdf)
 }
 
-message("\nDONE: UpSet + Top terms + Barplots for KEGG/Reactome/WikiPathways.")
+message("\nDONE: Top terms + Barplots for KEGG/Reactome/WikiPathways (GEO+GTEx+AE).")
