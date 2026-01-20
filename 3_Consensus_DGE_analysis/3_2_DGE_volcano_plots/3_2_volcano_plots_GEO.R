@@ -33,7 +33,7 @@ lfc_cut  <- 1
 max_neglog10 <- 301   # filtra -log10(p) > 301 antes del plot
 
 # Meta-volcano settings
-min_consistent_n <- 5  # genes presentes en >=5/8 datasets para evaluar consistencia
+min_consistent_n <- 7  # genes presentes en >=5/8 datasets para evaluar consistencia
 p_floor <- 1e-300      # evitar log(0) en Fisher y -log10
 
 # ===================== HELPERS ===================== #
@@ -286,49 +286,69 @@ make_meta_volcano_consistent <- function(all_long_df, out_pdf) {
   
   meta_hi <- meta %>% filter(common_consistent)
   
-  p <- ggplot(meta, aes(x = x_fc, y = y_nl)) +
-    # Todos en gris
-    geom_point(color = "gray75", size = 0.40, alpha = 0.35) +
+  # --- recorte visual para que no haya "p-values por las nubes" ---
+  y_cap <- 60  # ajusta si quieres (40-80 suele verse bien)
+  
+  meta_plot <- meta %>%
+    mutate(y_plot = pmin(y_nl, y_cap))
+  
+  meta_hi <- meta_plot %>%
+    filter(common_consistent, color_class != "Other")
+  
+  p <- ggplot(meta_plot, aes(x = x_fc, y = y_plot)) +
+    # Fondo (todos) como volcano tradicional
+    geom_point(color = "gray80", size = 0.35, alpha = 0.25) +
     
-    # Puntos coloreados SOLO para comunes-consistentes
+    # Resaltados (comunes-consistentes) arriba
     geom_point(
       data = meta_hi,
       aes(color = color_class),
-      size = 1.10,
+      size = 1.15,
       alpha = 0.95
     ) +
     
     # Umbrales (referencia)
-    geom_vline(xintercept = c(-lfc_cut, lfc_cut), linetype = "dashed", linewidth = 0.4) +
-    geom_hline(yintercept = -log10(padj_cut),     linetype = "dashed", linewidth = 0.4) +
+    geom_vline(xintercept = c(-lfc_cut, lfc_cut), linetype = "dashed", linewidth = 0.35) +
+    geom_hline(yintercept = -log10(padj_cut),     linetype = "dashed", linewidth = 0.35) +
     
-    # Etiquetas (solo adenosina dentro de comunes-consistentes)
+    # Etiquetas: solo adenosina dentro de los resaltados
     ggrepel::geom_label_repel(
       data = meta_hi %>% filter(is_adenosine),
       aes(label = Gene),
-      size = 3.0,
+      size = 3.1,
       max.overlaps = Inf,
       fill = "white",
       color = "black",
-      label.size = 0.25
+      label.size = 0.25,
+      min.segment.length = 0
     ) +
     
     scale_color_manual(values = c(
       "Common Up"   = "red",
       "Common Down" = "blue"
     )) +
+    
+    scale_y_continuous(
+      limits = c(0, y_cap),
+      expand = expansion(mult = c(0.02, 0.04))
+    ) +
+    
     labs(
       title = "Meta-volcano (GTEx + AE + GEO)",
       subtitle = paste0(
-        "Gray: all genes (one point per gene). Colored: genes present in ≥", min_consistent_n,
-        " datasets with consistent direction. Lines show ranges across datasets."
+        "Gray: all genes (1 point/gene; y capped at ", y_cap, "). ",
+        "Colored: genes present in ≥", min_consistent_n, " datasets with consistent direction."
       ),
       x = "log2FC (picked as max |log2FC| across datasets)",
-      y = "-log10(padj) (picked as max across datasets)",
+      y = "-log10(padj) (picked as max across datasets; capped for display)",
       color = "Common genes"
     ) +
-    theme_bw(base_size = 13) +
-    theme(panel.grid.minor = element_blank())
+    theme_classic(base_size = 13) +
+    theme(
+      legend.position = "right",
+      plot.title = element_text(face = "bold"),
+      panel.grid = element_blank()
+    )
   
   ggsave(out_pdf, p, width = 9.2, height = 6.6, device = cairo_pdf)
   out_png <- sub("\\.pdf$", ".png", out_pdf)
