@@ -270,19 +270,31 @@ cat("Done.\n")
 
 # ============================================================
 # ========== EXTRA HEATMAPS: Master Regulators / Targets ======
-# Requirements:
 # A) ONE heatmap with TFs = (Top5 highest NES) + (Top5 lowest NES)
-#    - Only rows with core_signature_score NOT NA
-#    - If TF repeats, keep best (smallest) rank_by_interest
+#    - core_signature_score NOT NA
+#    - if TF repeats, keep best (smallest) rank_by_interest
 # B) ONE heatmap with ALL unique interest_target_genes
 # Fix:
-# - remove "spaces"/white seams by rasterizing + cairo png device
-# - NA diagnostics printed inside helper (no need for mat2 in global env)
+# - eliminate "spaces" (seams) by:
+#   * draw as vector in PDF
+#   * PNG via ragg::agg_png (best) or Cairo fallback
+#   * NO raster inside Heatmap (use_raster = FALSE)
 # ============================================================
 
-# -------------------- Load MR table -------------------- #
 masters_reg_path <- "~/Ovary_signatures/2_DEG_GEO/core_mrs_interest_annot.tsv"
 masters_reg <- vroom::vroom(masters_reg_path, show_col_types = FALSE)
+
+# ---------- Safe PNG device (ragg preferred, Cairo fallback) ----------
+open_png_device <- function(path, width_px, height_px, res = 300) {
+  if (requireNamespace("ragg", quietly = TRUE)) {
+    ragg::agg_png(filename = path, width = width_px, height = height_px,
+                  units = "px", res = res, scaling = 1)
+    return(invisible("ragg"))
+  }
+  # Cairo fallback (may still seam if viewer rescales, but usually OK)
+  png(filename = path, width = width_px, height = height_px, res = res, type = "cairo")
+  invisible("cairo")
+}
 
 # -------------------- Helper: build and save heatmap from a gene set -------------------- #
 make_heatmap_for_genes <- function(genes_vec,
@@ -299,27 +311,20 @@ make_heatmap_for_genes <- function(genes_vec,
   genes_vec <- unique(toupper(genes_vec))
   genes_vec <- genes_vec[!is.na(genes_vec) & genes_vec != ""]
   
-  # subset from ALL (already normalized)
   df <- crispr_ovary_all_obj %>%
     dplyr::mutate(gene_u = toupper(gene_u)) %>%
     dplyr::filter(gene_u %in% genes_vec) %>%
-    dplyr::transmute(
-      cell_line,
-      gene = gene_u,
-      importance_m11
-    )
+    dplyr::transmute(cell_line, gene = gene_u, importance_m11)
   
   if (nrow(df) == 0) {
     warning("No matching genes found in DepMap for: ", title)
     return(invisible(NULL))
   }
   
-  # remove suffix for plotting
   df_plot <- df %>%
     dplyr::mutate(cell = sub("_OVARY$", "", cell_line)) %>%
     dplyr::select(gene, cell, importance_m11)
   
-  # Build matrix (genes x cells)
   mat_df2 <- df_plot %>%
     dplyr::distinct(gene, cell, .keep_all = TRUE) %>%
     tidyr::pivot_wider(names_from = cell, values_from = importance_m11)
@@ -329,14 +334,14 @@ make_heatmap_for_genes <- function(genes_vec,
   mat2$gene <- NULL
   mat2 <- as.matrix(mat2)
   
-  # preserve main heatmap column order EXACTLY (no intersect sorting)
+  # preserve main heatmap order (no intersect sorting)
   if (exists("mat") && is.matrix(get("mat"))) {
     main_cols <- colnames(get("mat"))
     common_cols <- main_cols[main_cols %in% colnames(mat2)]
     mat2 <- mat2[, common_cols, drop = FALSE]
   }
   
-  # Column group annotation aligned to mat2 columns
+  # Column annotation aligned to mat2
   col_grp2 <- cellline_groups_df %>%
     dplyr::mutate(cell = sub("_OVARY$", "", cell_line)) %>%
     dplyr::select(cell, ovary_group) %>%
@@ -346,26 +351,17 @@ make_heatmap_for_genes <- function(genes_vec,
   col_grp2$cell <- NULL
   col_grp2 <- col_grp2[colnames(mat2), , drop = FALSE]
   
-  # diagnostics: NA count and per-column NA
+  # NA diagnostics (inside function)
   na_total <- sum(is.na(mat2))
-  na_by_col <- colSums(is.na(mat2))
   cat("\n[", basename(out_png_path), "] NA total in matrix: ", na_total, "\n", sep = "")
-  if (any(na_by_col > 0)) {
-    cat("[", basename(out_png_path), "] Columns with NA:\n", sep = "")
-    print(na_by_col[na_by_col > 0])
-  }
-  
-  # If you want ZERO gaps from missing values for visualization:
-  # (does NOT affect your global normalization; only drawing)
   if (na_total > 0) {
+    # fill ONLY for visualization, keeps your global normalization intact
     mat2[is.na(mat2)] <- 0
     cat("[", basename(out_png_path), "] Filled NA with 0 for visualization.\n", sep = "")
   }
   
-  # fixed colors [-1,1]
   col_fun2 <- circlize::colorRamp2(c(-1, 0, 1), c("#2C7BB6", "white", "#D7191C"))
   
-  # group colors (reuse if exist)
   if (!exists("grp_cols")) {
     grp_levels2 <- unique(col_grp2$ovary_group)
     grp_cols2 <- setNames(
@@ -384,7 +380,6 @@ make_heatmap_for_genes <- function(genes_vec,
     annotation_name_gp = gpar(fontsize = 9)
   )
   
-  # row labels
   genes_present2 <- rownames(mat2)
   if (length(highlight_genes_vec) > 0) {
     hl2 <- intersect(toupper(highlight_genes_vec), genes_present2)
@@ -419,27 +414,26 @@ make_heatmap_for_genes <- function(genes_vec,
       labels_gp = gpar(fontsize = 9),
       at = c(-1, -0.5, 0, 0.5, 1)
     ),
-    # === seam killer ===
+    # Key: remove borders so no seams, and DO NOT raster here
     rect_gp = gpar(col = NA),
     border = FALSE,
-    use_raster = TRUE,
-    raster_quality = 4,
-    raster_device = "png"
+    use_raster = FALSE
   )
   
-  # -------------------- Save PDF -------------------- #
+  # ---------- PDF (vector) ----------
   pdf(out_pdf_path, width = 12, height = max(6, 0.25 * nrow(mat2) + 4), useDingbats = FALSE)
   grid.newpage()
   draw(ht2, heatmap_legend_side = "right", annotation_legend_side = "right")
   dev.off()
   cat("Saved: ", out_pdf_path, "\n", sep = "")
   
-  # -------------------- Save PNG (use cairo to avoid white seams) -------------------- #
-  png(out_png_path, width = 3600, height = 1800 + 120 * nrow(mat2), res = 300, type = "cairo")
+  # ---------- PNG (ragg/Cairo) ----------
+  height_px <- 1800 + 120 * nrow(mat2)
+  dev_used <- open_png_device(out_png_path, width_px = 3600, height_px = height_px, res = 300)
   grid.newpage()
   draw(ht2, heatmap_legend_side = "right", annotation_legend_side = "right")
   dev.off()
-  cat("Saved: ", out_png_path, "\n", sep = "")
+  cat("Saved: ", out_png_path, " (device=", dev_used, ")\n", sep = "")
   
   invisible(list(mat = mat2, ht = ht2))
 }
@@ -457,12 +451,6 @@ mr_tf_unique <- masters_reg %>%
 
 top5_high <- mr_tf_unique %>% dplyr::arrange(dplyr::desc(NES)) %>% dplyr::slice_head(n = 5)
 top5_low  <- mr_tf_unique %>% dplyr::arrange(NES) %>% dplyr::slice_head(n = 5)
-
-cat("\nTop 5 TFs by highest NES (core_signature_score not NA):\n")
-print(top5_high %>% dplyr::select(TF, NES, rank_by_interest, core_signature_score, TF_expression_status))
-
-cat("\nTop 5 TFs by lowest NES (core_signature_score not NA):\n")
-print(top5_low %>% dplyr::select(TF, NES, rank_by_interest, core_signature_score, TF_expression_status))
 
 tfs_10 <- unique(toupper(c(top5_high$TF, top5_low$TF)))
 
@@ -492,8 +480,6 @@ all_targets <- masters_reg %>%
 all_targets <- unique(toupper(trimws(all_targets)))
 all_targets <- all_targets[!is.na(all_targets) & all_targets != ""]
 
-cat("\nUnique interest_target_genes (all rows): ", length(all_targets), "\n", sep = "")
-
 out_pdf_targets <- file.path(OUT_DIR, "5_4_DepMap_OVARY_heatmap_all_interest_target_genes.pdf")
 out_png_targets <- file.path(OUT_DIR, "5_4_DepMap_OVARY_heatmap_all_interest_target_genes.png")
 
@@ -508,10 +494,13 @@ make_heatmap_for_genes(
   crispr_ovary_all_obj = crispr_ovary_all,
   cellline_groups_df = cellline_groups,
   highlight_genes_vec = highlight_genes,
-  split_by_group = FALSE,
-  cluster_rows = TRUE,
-  cluster_columns = TRUE
+  split_by_group = FALSE
 )
 
 cat("Done: extra MR/target heatmaps.\n")
+
+
+
+
+
 
