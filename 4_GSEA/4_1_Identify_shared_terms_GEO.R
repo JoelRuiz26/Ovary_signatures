@@ -61,9 +61,7 @@ clean_description <- function(df, db_name) {
 # ---- UpSet plot (intenta ComplexUpset; si no, usa UpSetR) ----
 plot_upset_safe <- function(inc_df, set_cols, title_txt, out_pdf, out_png) {
   
-  # inc_df: data.frame con columnas lógicas/0-1 por set, y (opcional) otras cols
   if (requireNamespace("ComplexUpset", quietly = TRUE)) {
-    # ComplexUpset usa ggplot2
     p <- ComplexUpset::upset(
       inc_df,
       intersect = set_cols,
@@ -89,7 +87,6 @@ plot_upset_safe <- function(inc_df, set_cols, title_txt, out_pdf, out_png) {
     )
     grDevices::dev.off()
     
-    # PNG (base)
     grDevices::png(out_png, width = 12, height = 6, units = "in", res = 600)
     UpSetR::upset(
       inc_df,
@@ -110,29 +107,28 @@ plot_upset_safe <- function(inc_df, set_cols, title_txt, out_pdf, out_png) {
   invisible(FALSE)
 }
 
-# Bubble plot para top shared terms
-plot_bubble_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
+# ---- Barplot para top shared terms ----
+plot_bar_top <- function(top_tbl, title_txt, subtitle_txt, out_pdf, out_png) {
   
   if (nrow(top_tbl) == 0) {
-    message("No hay términos para bubble plot: ", title_txt)
+    message("No hay términos para barplot: ", title_txt)
     return(invisible(NULL))
   }
   
   dfp <- top_tbl %>%
     mutate(
       neglog10_fdr = -log10(padj_min),
+      # orden: del "peor" al "mejor" para que en el plot salga "mejor arriba"
       Description = factor(Description, levels = rev(Description))
     )
   
   p <- ggplot(dfp, aes(
     x = NES_mean,
     y = Description,
-    color = neglog10_fdr,
-    size = n_datasets
+    fill = neglog10_fdr
   )) +
-    geom_point(alpha = 0.95, shape = 16) +
-    scale_color_viridis_c(name = expression(-log[10]("min FDR"))) +
-    scale_size_continuous(name = "N datasets") +
+    geom_col(width = 0.75, alpha = 0.95) +
+    scale_fill_viridis_c(name = expression(-log[10]("min FDR"))) +
     labs(
       title = title_txt,
       subtitle = subtitle_txt,
@@ -169,20 +165,19 @@ for (db in names(dbs)) {
     full.names = FALSE
   )
   
-  # Extrae "GEO_GSE####" de: GEO_GSE14407_REACTOME_SIG_0.05.tsv (etc.)
   geo_prefixes <- character()
   if (length(geo_sig_files) > 0) {
     geo_prefixes <- unique(sub(paste0("_[A-Z]+_SIG_", gsub("\\.", "\\\\.", fdr_tag), "\\.tsv$"), "", geo_sig_files))
-    # por seguridad, filtra solo los que realmente empiezan con GEO_
     geo_prefixes <- geo_prefixes[grepl("^GEO_", geo_prefixes)]
   }
   
-  dataset_prefixes <- c("GTEx", "AE", sort(geo_prefixes))
-  message("Datasets detectados: ", paste(dataset_prefixes, collapse = ", "))
+  # ====== CAMBIO PEQUEÑO: ORDEN CONSISTENTE ======
+  # Orden deseado: GEO_* (ordenado) + GTEx + AE
+  dataset_prefixes <- c(sort(geo_prefixes), "GTEx", "AE")
+  message("Datasets detectados (orden): ", paste(dataset_prefixes, collapse = ", "))
   
-  # --------- Cargar todos los SIG de los 8 datasets ---------
+  # --------- Cargar todos los SIG ---------
   all_long <- list()
-  
   for (pref in dataset_prefixes) {
     df <- load_sig(db_dir, pref, fdr_tag = fdr_tag) %>%
       clean_description(., db) %>%
@@ -197,10 +192,14 @@ for (db in names(dbs)) {
     
     all_long[[pref]] <- df
   }
-  
   all_long_df <- bind_rows(all_long)
   
   # --------- Incidencia (término presente / ausente por dataset) ---------
+  if (!requireNamespace("tidyr", quietly = TRUE)) {
+    stop("Falta el paquete 'tidyr' para construir la matriz de incidencia. Instala:\n",
+         "  install.packages('tidyr')\n")
+  }
+  
   inc <- all_long_df %>%
     distinct(Dataset, Description) %>%
     mutate(present = 1L) %>%
@@ -210,17 +209,10 @@ for (db in names(dbs)) {
       values_fill = 0L
     )
   
-  # Si tidyr no está, instrucción clara (pero no rompas silenciosamente)
-  if (!requireNamespace("tidyr", quietly = TRUE)) {
-    stop("Falta el paquete 'tidyr' para construir la matriz de incidencia. Instala:\n",
-         "  install.packages('tidyr')\n")
-  }
-  
-  # tidyr pivot_wider ya se usó arriba; si no existía, ya habría fallado.
-  # (lo dejamos así para que el error sea explícito)
+  # Orden de columnas para UpSet (igual que dataset_prefixes)
+  set_cols <- dataset_prefixes
   
   # Calcula cuántos datasets contienen cada término
-  set_cols <- dataset_prefixes
   inc <- inc %>%
     mutate(n_datasets = rowSums(across(all_of(set_cols))))
   
@@ -233,7 +225,6 @@ for (db in names(dbs)) {
   upset_pdf <- file.path(shared_dir, paste0(db, "_UpSet_shared_ge_", min_k, "_of_", length(set_cols), ".pdf"))
   upset_png <- sub("\\.pdf$", ".png", upset_pdf, ignore.case = TRUE)
   
-  # Asegura columnas binarias (0/1) para UpSetR/ComplexUpset
   inc_plot <- inc_k %>%
     select(all_of(set_cols)) %>%
     mutate(across(everything(), ~ as.integer(.x > 0)))
@@ -246,8 +237,7 @@ for (db in names(dbs)) {
     out_png  = upset_png
   )
   
-  # --------- Tabla resumen para términos >= min_k y seleccionar Top 20 ---------
-  # Resumen por término: frecuencia, min FDR, mean NES (solo donde aparece)
+  # --------- Tabla resumen y Top 20 ---------
   term_summary <- all_long_df %>%
     semi_join(inc_k %>% select(Description), by = "Description") %>%
     group_by(Description) %>%
@@ -265,22 +255,22 @@ for (db in names(dbs)) {
   out_tsv <- file.path(shared_dir, paste0(db, "_Top", top_n, "_terms_shared_ge_", min_k, "_datasets.tsv"))
   write_tsv(top_terms, out_tsv)
   
-  # --------- Bubble plot (solo top20 de >= min_k datasets) ---------
-  bub_pdf <- file.path(shared_dir, paste0(db, "_Top", top_n, "_bubble_shared_ge_", min_k, ".pdf"))
-  bub_png <- sub("\\.pdf$", ".png", bub_pdf, ignore.case = TRUE)
+  # --------- BARPLOT (en lugar de bubble) ---------
+  bar_pdf <- file.path(shared_dir, paste0(db, "_Top", top_n, "_bar_shared_ge_", min_k, ".pdf"))
+  bar_png <- sub("\\.pdf$", ".png", bar_pdf, ignore.case = TRUE)
   
-  plot_bubble_top(
+  plot_bar_top(
     top_tbl = top_terms,
     title_txt = paste0("Top ", top_n, " ", db, " terms shared in \u2265", min_k, " datasets"),
     subtitle_txt = paste0("Ranking: n_datasets desc, min FDR asc, |NES| mean desc (FDR<", fdr_tag, ")"),
-    out_pdf = bub_pdf,
-    out_png = bub_png
+    out_pdf = bar_pdf,
+    out_png = bar_png
   )
   
   message("Saved:")
   message("  UpSet: ", upset_pdf)
   message("  Top terms TSV: ", out_tsv)
-  message("  Bubble: ", bub_pdf)
+  message("  Barplot: ", bar_pdf)
 }
 
-message("\nDONE: UpSet + Top terms + Bubble plots for KEGG/Reactome/WikiPathways.")
+message("\nDONE: UpSet + Top terms + Barplots for KEGG/Reactome/WikiPathways.")
