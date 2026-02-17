@@ -5,7 +5,7 @@ suppressPackageStartupMessages({
   library(ggplot2)
   library(ggrepel)
   library(readr)
-  library(patchwork)   # <-- grid + shared legend
+  library(patchwork)   # grid + shared legend
 })
 
 options(stringsAsFactors = FALSE)
@@ -16,24 +16,18 @@ base_dir <- "~/Ovary_signatures"
 paths <- list(
   raw = file.path(base_dir, "0_DGE_GTEx", "DE_full_OVARY_DESeq2_GTEx.rds"),
   ae  = file.path(base_dir, "1_DGE_AE",   "DE_full_OVARY_DESeq2_AE.rds"),
-  # GEO: lista con 6 datasets
-  geo = file.path(base_dir, "2_DEG_GEO",  "DEGs_alldsets_GEO.rds")
+  geo = file.path(base_dir, "2_DEG_GEO",  "DEGs_alldsets_GEO.rds")  # lista con 6 datasets
 )
 
 out_dir <- file.path(base_dir, "3_Consensus_DGE_analysis/3_2_DGE_volcano_plots")
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-adenosine_genes <- unique(c(
-  "ADORA1", "ADORA2A", "ADORA2B", "ADORA3",
-  "SLC28A1", "SLC29A1",
-  "NT5E", "ENTPD1", "DPP4", "ADK", "ADA", "ADA2"
-))
-
 padj_cut <- 0.05
 lfc_cut  <- 1
-max_neglog10 <- 301   # filtra -log10(p) > 301 antes del plot
+TOP_N    <- 5
 
-p_floor <- 1e-300      # evitar log(0) en -log10
+max_neglog10 <- 301   # filtra -log10(p) > 301 antes del plot
+p_floor <- 1e-300     # evitar log(0) en -log10
 
 # ===================== HELPERS ===================== #
 read_rds_safe <- function(p) {
@@ -41,6 +35,7 @@ read_rds_safe <- function(p) {
   readRDS(p)
 }
 
+# ---- DESeq2-like prep ----
 prep_df <- function(df) {
   
   if (!("Symbol" %in% colnames(df))) {
@@ -68,23 +63,25 @@ prep_df <- function(df) {
     ) %>%
     mutate(
       padj_used = pmax(padj_used, p_floor),
-      neglog10 = -log10(padj_used)
+      neglog10  = -log10(padj_used)
     ) %>%
     filter(neglog10 <= max_neglog10) %>%
     mutate(
       Type = case_when(
-        padj_used < padj_cut & log2FoldChange >=  lfc_cut ~ "Upregulated",
-        padj_used < padj_cut & log2FoldChange <= -lfc_cut ~ "Downregulated",
-        TRUE ~ "Not Significant"
+        padj_used < padj_cut & log2FoldChange >=  lfc_cut ~ "Overexpressed",
+        padj_used < padj_cut & log2FoldChange <= -lfc_cut ~ "Underexpressed",
+        TRUE ~ "Not significant"
       ),
-      is_adenosine_DE =
-        Gene %in% adenosine_genes &
-        padj_used < padj_cut &
-        abs(log2FoldChange) >= lfc_cut
+      direction = case_when(
+        padj_used < padj_cut & log2FoldChange >=  lfc_cut ~ "Up",
+        padj_used < padj_cut & log2FoldChange <= -lfc_cut ~ "Down",
+        TRUE ~ NA_character_
+      ),
+      score = abs(log2FoldChange) * neglog10
     )
 }
 
-# ===== GEO (limma) =====
+# ---- GEO (limma-like prep) ----
 prep_df_geo <- function(df) {
   
   gene_col <- dplyr::case_when(
@@ -124,7 +121,7 @@ prep_df_geo <- function(df) {
     ) %>%
     mutate(
       padj_used = pmax(padj_used, p_floor),
-      neglog10 = -log10(padj_used)
+      neglog10  = -log10(padj_used)
     ) %>%
     filter(neglog10 <= max_neglog10)
   
@@ -135,63 +132,90 @@ prep_df_geo <- function(df) {
     ungroup() %>%
     mutate(
       Type = case_when(
-        padj_used < padj_cut & log2FoldChange >=  lfc_cut ~ "Upregulated",
-        padj_used < padj_cut & log2FoldChange <= -lfc_cut ~ "Downregulated",
-        TRUE ~ "Not Significant"
+        padj_used < padj_cut & log2FoldChange >=  lfc_cut ~ "Overexpressed",
+        padj_used < padj_cut & log2FoldChange <= -lfc_cut ~ "Underexpressed",
+        TRUE ~ "Not significant"
       ),
-      is_adenosine_DE =
-        Gene %in% adenosine_genes &
-        padj_used < padj_cut &
-        abs(log2FoldChange) >= lfc_cut
+      direction = case_when(
+        padj_used < padj_cut & log2FoldChange >=  lfc_cut ~ "Up",
+        padj_used < padj_cut & log2FoldChange <= -lfc_cut ~ "Down",
+        TRUE ~ NA_character_
+      ),
+      score = abs(log2FoldChange) * neglog10
     )
   
   out
 }
 
+# ---- pick Top genes to label: Top N Up + Top N Down by score ----
+pick_top_labels <- function(df, top_n = 5) {
+  
+  # candidatos (ya cumplen padj y lfc por "direction" != NA)
+  cand <- df %>%
+    filter(!is.na(direction)) %>%
+    filter(!grepl("-", Gene) & !grepl("\\.", Gene)) %>%   # <-- NUEVO: evita guion y punto
+    group_by(Gene) %>%
+    slice_max(order_by = score, n = 1, with_ties = FALSE) %>%
+    ungroup()
+  
+  top_up <- cand %>%
+    filter(direction == "Up") %>%
+    slice_max(order_by = score, n = top_n, with_ties = FALSE)
+  
+  top_down <- cand %>%
+    filter(direction == "Down") %>%
+    slice_max(order_by = score, n = top_n, with_ties = FALSE)
+  
+  bind_rows(top_up, top_down)
+}
+
 # ---- Make ONE volcano plot (returns ggplot object) ----
 make_volcano_plot <- function(df, subtitle) {
   
-  ad_df <- df %>%
-    filter(is_adenosine_DE) %>%
-    group_by(Gene) %>%
-    slice_max(order_by = neglog10, n = 1, with_ties = FALSE) %>%
-    ungroup()
+  lab_df <- pick_top_labels(df, top_n = TOP_N)
   
   ggplot(df, aes(log2FoldChange, neglog10)) +
     geom_point(aes(color = Type), size = 0.8, alpha = 0.75) +
-    scale_color_manual(values = c(
-      "Upregulated"     = "red",
-      "Downregulated"   = "blue",
-      "Not Significant" = "gray70"
+    scale_color_manual(
+      values = c(
+        "Overexpressed"   = "#D7301F",
+        "Underexpressed"  = "#2C7FB8",
+        "Not significant" = "grey75"
+      ),
+      breaks = c("Overexpressed", "Not significant", "Underexpressed")
+    ) +
+    guides(color = guide_legend(
+      override.aes = list(shape = 16, size = 4, alpha = 1)
     )) +
     geom_vline(xintercept = c(-lfc_cut, lfc_cut), linetype = "dashed", linewidth = 0.4) +
     geom_hline(yintercept = -log10(padj_cut),     linetype = "dashed", linewidth = 0.4) +
+    
+    # highlight top genes (Up + Down)
     geom_point(
-      data = ad_df,
-      aes(x = log2FoldChange, y = neglog10),
+      data = lab_df,
+      aes(x = log2FoldChange, y = neglog10, color = Type),
       inherit.aes = FALSE,
-      shape = 21,
-      fill  = "purple3",
-      color = "black",
-      stroke = 0.35,
-      size = 2.8,
-      alpha = 0.98
+      size = 1.6,
+      alpha = 0.95,
+      show.legend = FALSE
     ) +
     ggrepel::geom_label_repel(
-      data = ad_df,
+      data = lab_df,
       aes(x = log2FoldChange, y = neglog10, label = Gene),
       inherit.aes = FALSE,
       size = 3.2,
       max.overlaps = Inf,
       fill = "white",
       color = "black",
-      label.size = 0.25
+      label.size = 0.25,
+      box.padding = 0.35,
+      point.padding = 0.25
     ) +
     labs(
       title = subtitle,
       x = "log2FoldChange",
       y = "-log10(padj)",
-      color = NULL
+      color = "Expression"
     ) +
     theme_bw(base_size = 13) +
     theme(
@@ -257,7 +281,6 @@ if (file.exists(paths$geo)) {
 }
 
 # ---- GRID (todos + una sola leyenda) ----
-# Nota: si por alguna razón no son 8 (p.ej., GEO no cargó), igual arma el grid con lo que haya.
 grid <- wrap_plots(plots, ncol = 4) +
   plot_layout(guides = "collect") &
   theme(legend.position = "bottom")
