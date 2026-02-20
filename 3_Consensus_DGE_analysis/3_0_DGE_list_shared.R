@@ -89,48 +89,84 @@ geo_sig_signed <- function(df) {
 raw_sig <- deseq_sig_signed(DE_raw, "TCGA (ovary_GTEX_control)")
 ae_sig  <- deseq_sig_signed(DE_ae,  "TCGA (Reference_control)")
 geo_sig <- geo_sig_signed(GEO)
+#NOTE:
+#nrow(geo_sig) #p_raw [1] 1586  #p_Adj [1] 430
+
+
 
 # ===================== TABLE: GENES PRESENT IN >=2 SOURCES ===================== #
 # One vote per source per gene:
 # - If a gene has multiple rows within a source (shouldn't happen often), we collapse to a single direction vote per source.
 #   If it conflicts within the same source, we set that source's vote to NA (excluded from up/down voting).
+# Needed for pivot_wider
+
 collapse_to_one_vote_per_source <- function(df) {
   df %>%
     group_by(gene, source) %>%
     summarise(
-      dir = if (n_distinct(direction) == 1) first(direction) else NA_character_,
+      direction = if (n_distinct(direction) == 1) first(direction) else NA_character_,
       .groups = "drop"
     ) %>%
-    filter(!is.na(dir)) %>%
-    rename(direction = dir)
+    filter(!is.na(direction))
 }
 
+# One direction per gene per source
 votes <- bind_rows(raw_sig, ae_sig, geo_sig) %>%
-  collapse_to_one_vote_per_source()
+  collapse_to_one_vote_per_source() %>%
+  mutate(source_short = recode(source,
+                               "TCGA (ovary_GTEX_control)" = "GTEx",
+                               "TCGA (Reference_control)"  = "AE",
+                               "GEO"                       = "GEO"
+  ))
 
-consensus_genes <- votes %>%
-  group_by(gene) %>%
-  summarise(
-    n_sources = n_distinct(source),
-    n_up      = sum(direction == "up"),
-    n_down    = sum(direction == "down"),
+# ALL genes table (membership + per-source direction + consensus)
+all_genes_tbl <- votes %>%
+  dplyr::select(gene, source_short, direction) %>%
+  tidyr::pivot_wider(
+    names_from  = source_short,
+    values_from = direction,
+    values_fill = NA_character_
+  ) %>%
+  mutate(
+    gtex = as.integer(!is.na(GTEx)),
+    ae   = as.integer(!is.na(AE)),
+    geo  = as.integer(!is.na(GEO)),
+    n_sources = gtex + ae + geo,
+    sources = purrr::pmap_chr(list(gtex, ae, geo), \(g, a, o) paste(c("GTEx","AE","GEO")[c(g,a,o) == 1], collapse = ",")),
+    n_up   = rowSums(across(c(GTEx, AE, GEO), ~ .x == "up"),   na.rm = TRUE),
+    n_down = rowSums(across(c(GTEx, AE, GEO), ~ .x == "down"), na.rm = TRUE),
     consensus_direction = case_when(
       n_up   > n_down ~ "up",
       n_down > n_up   ~ "down",
-      TRUE            ~ "none"   # tie (e.g., 1 up vs 1 down)
-    ),
-    .groups = "drop"
+      TRUE            ~ "none"
+    )
   ) %>%
-  filter(n_sources >= 2) %>%
   arrange(desc(n_sources), gene)
+
+###Annote list ###
+annot_universe <- readRDS("~/Ovary_signatures/3_Consensus_DGE_analysis/3_3_Fano_Factor/3_3_2_gene_annotation_UNION_universe.rds")
+
+all_genes_tbl <- all_genes_tbl %>%
+  left_join(dplyr::select(annot_universe, gene, ensembl), by = "gene") %>%
+  relocate(ensembl, .after = gene)
+
+# Save ALL genes table
+out_all <- file.path(out_dir, "3_0_2_allgenes.tsv")
+write_tsv(all_genes_tbl, out_all)
+
+# consensus (>=2 sources) in ONE line, derived from all_genes_tbl
+consensus_genes <- all_genes_tbl %>% filter(n_sources >= 2) %>% arrange(desc(n_sources), gene)
 
 # Output table (KEEP SAME FILENAME)
 out_genes <- file.path(out_dir, "3_0_1_genes_concordant.tsv")
 write_tsv(consensus_genes, out_genes)
 
-# ===================== VENN: SIGNIFICANT GENES ONLY (MATCHING THE SAME RULES) ===================== #
+print(consensus_genes %>% filter(n_sources == 3) %>% pull(gene) %>% length())
+#646
+
+
+# ===================== VENN: SIGNIFICANT GENES    ==================== #
 # Venn uses only presence/absence of gene symbols in each significant list.
-# (This will now be consistent with the "votes" universe above.)
 
 venn_list <- list(
   "TCGA\n(ovary_GTEX_control)" = sort(unique(raw_sig$gene)),
@@ -161,7 +197,7 @@ venn_plot <- ggvenn(
     plot.margin = margin(15, 20, 15, 20)
   )
 
-# Output Venn (KEEP SAME FILENAME)
+# Output Venn 
 out_pdf <- file.path(out_dir, "3_0_1_venn_TCGA_GEO.pdf")
 ggsave(out_pdf, venn_plot, width = 8, height = 6.5)
 
