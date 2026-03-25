@@ -92,8 +92,6 @@ geo_sig <- geo_sig_signed(GEO)
 #NOTE:
 #nrow(geo_sig) #p_raw [1] 1586  #p_Adj [1] 430
 
-
-
 # ===================== TABLE: GENES PRESENT IN >=2 SOURCES ===================== #
 # One vote per source per gene:
 # - If a gene has multiple rows within a source (shouldn't happen often), we collapse to a single direction vote per source.
@@ -104,7 +102,7 @@ collapse_to_one_vote_per_source <- function(df) {
   df %>%
     group_by(gene, source) %>%
     summarise(
-      direction = if (n_distinct(direction) == 1) first(direction) else NA_character_,
+      direction = if (n_distinct(direction) == 1) dplyr::first(direction) else NA_character_,
       .groups = "drop"
     ) %>%
     filter(!is.na(direction))
@@ -148,7 +146,27 @@ annot_universe <- readRDS("~/Ovary_signatures/3_Consensus_DGE_analysis/3_3_Fano_
 
 all_genes_tbl <- all_genes_tbl %>%
   left_join(dplyr::select(annot_universe, gene, ensembl), by = "gene") %>%
-  relocate(ensembl, .after = gene)
+  relocate(ensembl, .after = gene) %>%
+  left_join(
+    DE_raw %>%
+      mutate(gene = clean_gene(Symbol)) %>%
+      filter(!is.na(gene)) %>%
+      group_by(gene) %>%
+      summarise(log2FC_raw = mean(log2FoldChange, na.rm = TRUE), .groups = "drop"),
+    by = "gene"
+  ) %>%
+  left_join(
+    DE_ae %>%
+      mutate(gene = clean_gene(Symbol)) %>%
+      filter(!is.na(gene)) %>%
+      group_by(gene) %>%
+      summarise(log2FC_ae = mean(log2FoldChange, na.rm = TRUE), .groups = "drop"),
+    by = "gene"
+  ) %>%
+  mutate(
+    mean_log2FC = rowMeans(across(c(log2FC_raw, log2FC_ae)), na.rm = TRUE)
+  )
+
 
 # Save ALL genes table
 out_all <- file.path(out_dir, "3_0_2_allgenes.tsv")
@@ -162,7 +180,7 @@ out_genes <- file.path(out_dir, "3_0_1_genes_concordant.tsv")
 write_tsv(consensus_genes, out_genes)
 
 print(consensus_genes %>% filter(n_sources == 3) %>% pull(gene) %>% length())
-#646
+#648
 
 
 # ===================== VENN: SIGNIFICANT GENES    ==================== #
@@ -208,3 +226,4 @@ ggsave(out_png, venn_plot, width = 8, height = 6.5, dpi = 600)
 cat("Done.\n")
 cat("Venn diagram saved to: ", out_pdf, "\n", sep = "")
 cat("Consensus gene list saved to: ", out_genes, "\n", sep = "")
+

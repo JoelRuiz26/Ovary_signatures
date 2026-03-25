@@ -12,8 +12,8 @@ OUT_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_3_Fano_Factor"
 # =========================
 # 1) Load normalized matrices
 # =========================
-norm_all_ovary <- readRDS(file.path(OUT_DIR, "3_3_1_expr_raw_Tumor_Ctlhomolog.rds"))
-norm_all_auto  <- readRDS(file.path(OUT_DIR, "3_3_1_expr_raw_Tumor_CtlAuto.rds"))
+norm_all_ovary <- readRDS(file.path(OUT_DIR, "3_3_2_norm_counts_tumor_GTEX.rds"))
+norm_all_auto  <- readRDS(file.path(OUT_DIR, "3_3_2_norm_count_tumor_AE.rds"))
 
 # =========================
 # 2) Function to compute Fano factor per gene

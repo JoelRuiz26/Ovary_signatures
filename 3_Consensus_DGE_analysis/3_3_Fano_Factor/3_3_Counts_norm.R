@@ -42,12 +42,12 @@ controls_gtex <- phenoDF %>%
 set.seed(123)
 controls_autoencoder_gtex <- computeRefTissue(
   case_id      = case_tumor,
-  adjacent     = FALSE,
+  adjacent     = TRUE,
   source       = "octad",
-  control_size = 90
+  control_size = 88
 ) %>% as.character() %>% unique()
 
-controls_autoencoder <- setdiff(controls_autoencoder_gtex, controls_gtex)
+controls_autoencoder <- controls_autoencoder_gtex
 
 all_samples <- union(case_tumor, union(controls_gtex, controls_autoencoder))
 
@@ -98,6 +98,9 @@ dds_tumor_Ctlhomolog <- DESeq(dds_tumor_Ctlhomolog)
 common_genes <- rownames(dds_tumor_Ctlhomolog)  # genes kept after filtering in homolog
 dds_tumor_CtlAuto <- make_dds(expr_raw_all[common_genes, ids_auto, drop = FALSE], meta_auto)
 dds_tumor_CtlAuto <- DESeq(dds_tumor_CtlAuto)
+
+saveRDS(dds_tumor_Ctlhomolog, file.path(OUT_DIR, "3_3_2_dds_tumor_Ctlhomolog.rds"))
+saveRDS(dds_tumor_CtlAuto,    file.path(OUT_DIR, "3_3_2_dds_tumor_CtlAuto.rds"))
 
 # -------------------- normalized counts + save (same intent/outputs) --------------------
 norm_all_ovary <- counts(dds_tumor_Ctlhomolog, normalized = TRUE)
