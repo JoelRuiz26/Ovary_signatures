@@ -79,6 +79,8 @@ Master_Regulator <- readRDS("/STORAGE/csbig/jruiz/Ovary_data/6_MRA/cancer_ovary_
 
 # Filtrar regulones
 regulons_filtered <- Master_Regulator[names(Master_Regulator) %in% tf_names]
+saveRDS(regulons_filtered,"/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_0_Top_elbow_regulones.rds")
+
 
 # Métricas
 regulon_stats <- map_dfr(names(regulons_filtered), function(tf){

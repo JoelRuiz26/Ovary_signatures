@@ -6,6 +6,7 @@ load("/STORAGE/csbig/jruiz/Ovary_data/7_survival/7_1_Image_ElasNet.RData")
 
 suppressPackageStartupMessages({
   library(dplyr)
+  library(tibble)
   library(survival)
   library(survminer)
   library(timeROC)

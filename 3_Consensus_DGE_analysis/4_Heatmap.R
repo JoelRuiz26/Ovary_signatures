@@ -21,6 +21,13 @@ core_genes <- unique(core_signature$ensembl)
 # =========================
 # Helpers
 # =========================
+annotation_colors = list(
+  Condition = c(
+    control = "#8FD694" ,
+    TCGA_tumor = "#D4A373" 
+  )
+)
+
 plot_heatmap_and_clusters <- function(mat, annotation_col = NULL, main_title, out_png, out_tsv) {
   dcols <- as.dist(1 - cor(mat, method = "pearson", use = "pairwise.complete.obs"))
   hcols <- hclust(dcols, method = "average")
@@ -50,16 +57,23 @@ plot_heatmap_and_clusters <- function(mat, annotation_col = NULL, main_title, ou
     cluster_cols = hcols,
     cluster_rows = TRUE,
     annotation_col = annotation_col,
+    annotation_colors = list(   # 👈 ESTA LÍNEA
+      Condition = c(
+        control = "#8FD694" ,
+        TCGA_tumor = "#D4A373" )),
     annotation_names_col = FALSE,
     show_colnames = FALSE,
     show_rownames = FALSE,
     border_color = NA,
-    main = paste0(main_title, " | sample clusters=", ncl)
+    main = paste0(main_title, " | sample clusters=", ncl),
+    color = colorRampPalette(c("#2C7FB8", "grey95", "#D7301F"))(100)
+    #color = colorRampPalette(c("#556B2F", "#F5F5DC", "#8B1C62"))(100)
   )
   
   message(main_title, " -> identified sample clusters: ", ncl)
   invisible(list(n_clusters = ncl, sample_cluster = cl))
 }
+
 
 # =========================
 # 1) VST from the SAVED dds
@@ -118,7 +132,7 @@ res_ae_all <- plot_heatmap_and_clusters(
 tumor_ids_both <- intersect(colnames(dds_gtex), colnames(dds_ae))
 
 mat_gtex_t <- mat_gtex_core[, tumor_ids_both, drop = FALSE]
-mat_ae_t   <- mat_ae_core[,   tumor_ids_both, drop = FALSE]
+mat_ae_t   <- mat_ae_core[,   tumor_ids_both, drop = FALSE] %>% as.data.frame()
 
 # consensus mean in VST space
 mat_consensus <- (mat_gtex_t + mat_ae_t) / 2
@@ -136,3 +150,4 @@ res_cons <- plot_heatmap_and_clusters(
 )
 
 message("DONE. Row-scaled Z-score of VST expression. Outputs in: ", OUT_DIR)
+

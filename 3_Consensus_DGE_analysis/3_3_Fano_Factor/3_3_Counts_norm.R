@@ -76,6 +76,9 @@ stopifnot(identical(colnames(counts_all), metadata_all$sample.id))
 expr_raw_all <- round(2^counts_all - 1)
 storage.mode(expr_raw_all) <- "integer"
 
+#Tumor
+expr_raw_tumor <- expr_raw_all[, case_tumor, drop = FALSE]
+
 # define sample sets (IDs)
 ids_GTEX <- union(case_tumor, controls_gtex)
 ids_auto <- union(case_tumor, controls_autoencoder)
@@ -91,6 +94,8 @@ saveRDS(metadata_all,
 # -------------------- DESeq objects (shared gene universe) --------------------
 meta_homolog <- metadata_all %>% filter(sample.id %in% ids_GTEX)
 meta_auto    <- metadata_all %>% filter(sample.id %in% ids_auto)
+meta_tumor_only <- metadata_all %>% filter(sample.id %in% case_tumor)
+meta_tumor_only <- meta_tumor_only[match(colnames(expr_raw_tumor), meta_tumor_only$sample.id), , drop = FALSE]
 
 dds_tumor_Ctlhomolog <- make_dds(expr_raw_all[, ids_GTEX, drop = FALSE], meta_homolog)
 dds_tumor_Ctlhomolog <- DESeq(dds_tumor_Ctlhomolog)
@@ -99,15 +104,23 @@ common_genes <- rownames(dds_tumor_Ctlhomolog)  # genes kept after filtering in 
 dds_tumor_CtlAuto <- make_dds(expr_raw_all[common_genes, ids_auto, drop = FALSE], meta_auto)
 dds_tumor_CtlAuto <- DESeq(dds_tumor_CtlAuto)
 
+dds_tumor_only <- DESeqDataSetFromMatrix(
+  countData = expr_raw_tumor,
+  colData = data.frame(row.names = colnames(expr_raw_tumor)),design = ~ 1)
+
+dds_tumor_only <- estimateSizeFactors(dds_tumor_only)
+
 saveRDS(dds_tumor_Ctlhomolog, file.path(OUT_DIR, "3_3_2_dds_tumor_Ctlhomolog.rds"))
 saveRDS(dds_tumor_CtlAuto,    file.path(OUT_DIR, "3_3_2_dds_tumor_CtlAuto.rds"))
 
 # -------------------- normalized counts + save (same intent/outputs) --------------------
 norm_all_ovary <- counts(dds_tumor_Ctlhomolog, normalized = TRUE)
 norm_all_auto  <- counts(dds_tumor_CtlAuto,    normalized = TRUE)
+norm_tumor_only <- counts(dds_tumor_only, normalized = TRUE)
 
 saveRDS(norm_all_ovary, file.path(OUT_DIR, "3_3_2_norm_counts_tumor_GTEX.rds"))
 saveRDS(norm_all_auto,  file.path(OUT_DIR, "3_3_2_norm_count_tumor_AE.rds"))
+saveRDS(norm_tumor_only, file = file.path(OUT_DIR, "3_3_2_norm_counts_tumor_ONLY.rds"))
 
 ###Anotation
 
@@ -116,8 +129,11 @@ ga <- as.data.frame(octad.db::get_ExperimentHub_data("EH7272"))
 ga$ensembl <- sub("\\..*", "", as.character(ga$ensembl))
 ga <- ga[!is.na(ga$ensembl) & !duplicated(ga$ensembl), ]
 
-gU <- union(sub("\\..*", "", rownames(norm_all_ovary)),
-            sub("\\..*", "", rownames(norm_all_auto)))
+gU <- union(
+  union(
+    sub("\\..*", "", rownames(norm_all_ovary)),
+    sub("\\..*", "", rownames(norm_all_auto))),
+  sub("\\..*", "", rownames(norm_tumor_only)))
 
 annot_universe <- ga[match(gU, ga$ensembl),
                      c("ensembl","gene","type","GeneID"),

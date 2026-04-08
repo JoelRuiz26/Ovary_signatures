@@ -4,7 +4,6 @@
 # ============================================================
 # CRISPR dependency analysis – ovarian cancer
 # ============================================================
-#BiocManager::install("UCLouvain-CBIO/depmap")
 
 suppressPackageStartupMessages({
   library(vroom)
@@ -14,29 +13,26 @@ suppressPackageStartupMessages({
   library(ComplexHeatmap)
   library(circlize)
   library(grid)
-  library(effsize)
   library(ggplot2)
   library(ggrepel)
   library(tibble)
+  library(patchwork)
 })
+
 options(stringsAsFactors = FALSE)
 
+# ============================================================
+# Paths
+# ============================================================
+
 DGE_PATH <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_2_allgenes.tsv"
-TF_PATH  <- "~/Ovary_signatures/5_MRA/core_mra.tsv"
+OUT_DIR  <- "~/Ovary_signatures/6_Depmap_ovary/"
 
 # ============================================================
 # 1) Load consensus genes
 # ============================================================
 
 DGE_list_shared <- vroom(DGE_PATH, show_col_types = FALSE)
-colnames(DGE_list_shared)
-#[1] "gene"                "ensembl"             "AE"                 
-#[4] "GTEx"                "GEO"                 "gtex"               
-#[7] "ae"                  "geo"                 "n_sources"          
-#[10] "sources"             "n_up"                "n_down"             
-#[13] "consensus_direction" "log2FC_raw"          "log2FC_ae"          
-#[16] "mean_log2FC"
-
 
 cons_genes <- DGE_list_shared %>%
   filter(n_sources == 3,
@@ -46,7 +42,7 @@ cons_genes <- DGE_list_shared %>%
   distinct()
 
 # ============================================================
-# 2) DepMap CRISPR ovarian cell lines
+# 2) Load DepMap CRISPR ovarian cell lines
 # ============================================================
 
 crispr_ovary_all <- depmap_crispr() %>%
@@ -56,29 +52,18 @@ crispr_ovary_all <- depmap_crispr() %>%
     dep_raw = dependency
   ) %>%
   group_by(cell_line) %>%
-  mutate(
-    dep_scaled_m11 = dep_raw ) %>% 
-  #      2 * ((dep_raw - min(dep_raw, na.rm = TRUE)) /
-  #             (max(dep_raw, na.rm = TRUE) - min(dep_raw, na.rm = TRUE))) - 1
-  #  ) %>%
+  mutate(dep_scaled_m11 = dep_raw) %>%
   ungroup()
-colnames(crispr_ovary_all)
-#[1] "depmap_id"      "gene"           "dependency"     "entrez_id"     
-#[5] "gene_name"      "cell_line"      "gene_u"         "dep_raw"       
-#[9] "dep_scaled_m11"
 
 cat("Rows OVARY:", nrow(crispr_ovary_all), "\n")
-#Rows OVARY: 1008388 
-
 cat("Cell lines:", n_distinct(crispr_ovary_all$cell_line), "\n")
-#Cell lines: 58 
 
 # ============================================================
 # 3) Build gene dependency matrix
 # ============================================================
 
 mat <- crispr_ovary_all %>%
-  inner_join(cons_genes, by="gene_u") %>%
+  inner_join(cons_genes, by = "gene_u") %>%
   transmute(
     gene = gene_u,
     cell = sub("_OVARY$", "", cell_line),
@@ -89,19 +74,15 @@ mat <- crispr_ovary_all %>%
   column_to_rownames("gene") %>%
   as.matrix()
 
-mat[is.na(mat)] <- NA
-
 cat("Matrix dims:", nrow(mat), "x", ncol(mat), "\n")
-#Matrix dims: 611 x 58 
 
 # ============================================================
-# Heatmap + labels con flechas (sin traslape)
+# 4) Heatmap (ordered by mean dependency)
 # ============================================================
 
-# Ordenar matriz
-mat_top <- mat[order(rowMeans(mat)), ]
+gene_means <- rowMeans(mat, na.rm = TRUE)
+mat_top <- mat[order(gene_means, decreasing = FALSE), ]
 
-# Escala de color
 min_dep <- min(crispr_ovary_all$dep_raw, na.rm = TRUE)
 max_dep <- max(crispr_ovary_all$dep_raw, na.rm = TRUE)
 
@@ -110,87 +91,16 @@ col_fun <- colorRamp2(
   c("#B40426", "white", "#08306B")
 )
 
-# -------------------------------
-# Dendrograma
-# -------------------------------
-row_dend <- as.dendrogram(hclust(dist(mat_top)))
-row_dend <- reorder(row_dend, wts = -rowMeans(mat_top))
-row_dend <- rev(row_dend)
+top_genes <- names(sort(rowMeans(mat_top, na.rm = TRUE)))[1:20]
+row_index <- which(rownames(mat_top) %in% top_genes)
 
-# -------------------------------
-# Funciones
-# -------------------------------
-get_leaves <- function(d) {
-  if (is.leaf(d)) attr(d, "label")
-  else unlist(lapply(d, get_leaves))
-}
-
-find_most_negative_clade <- function(dend, mat) {
-  best_mean <- Inf
-  best_genes <- NULL
-  
-  traverse <- function(node) {
-    genes <- get_leaves(node)
-    if (length(genes) > 1) {
-      m <- mean(rowMeans(mat[genes, , drop=FALSE]), na.rm=TRUE)
-      if (m < best_mean) {
-        best_mean <<- m
-        best_genes <<- genes
-      }
-    }
-    if (!is.leaf(node)) lapply(node, traverse)
-  }
-  
-  traverse(dend)
-  best_genes
-}
-
-# Clado más negativo
-genes_core <- find_most_negative_clade(row_dend, mat_top)
-
-# Subir un nivel
-get_parent_clade <- function(dend, target) {
-  find_parent <- function(node) {
-    if (!is.leaf(node)) {
-      leaves <- get_leaves(node)
-      if (all(target %in% leaves)) return(leaves)
-      res <- lapply(node, find_parent)
-      res <- res[!sapply(res, is.null)]
-      if (length(res) > 0) return(res[[1]])
-    }
-    NULL
-  }
-  find_parent(dend)
-}
-
-genes_cluster <- get_parent_clade(row_dend, genes_core)
-
-# -------------------------------
-# TOP 10 genes más esenciales
-# -------------------------------
-gene_means <- rowMeans(mat_top)
-
-top10_genes <- genes_cluster[
-  order(gene_means[genes_cluster])[1:19]
-]
-
-# -------------------------------
-# POSICIONES PARA anno_mark
-# -------------------------------
-row_index <- which(rownames(mat_top) %in% top10_genes)
-
-# -------------------------------
-# Heatmap + labels tipo flechas
-# -------------------------------
 ht <- Heatmap(
   mat_top,
   name = "Dependency_score",
   col = col_fun,
-  cluster_rows = row_dend,
+  cluster_rows = FALSE,
   cluster_columns = TRUE,
-  
   show_row_names = FALSE,
-  
   right_annotation = rowAnnotation(
     mark = anno_mark(
       at = row_index,
@@ -200,28 +110,159 @@ ht <- Heatmap(
       link_gp = gpar(lwd = 0.8)
     )
   ),
-  
   show_column_names = TRUE,
-  column_names_gp = gpar(fontsize = 8,fontface = "bold"),
+  column_names_gp = gpar(fontsize = 8, fontface = "bold"),
   column_title = "Gene dependency across ovarian cancer cell lines",
   column_title_gp = gpar(fontsize = 20, fontface = "bold"),
-  
   rect_gp = gpar(col = NA),
   border = FALSE
 )
 
-# Dibujar
-grid.newpage()
-draw(ht, heatmap_legend_side = "right")
+# Save heatmap
+pdf(paste0(OUT_DIR, "6_1_1_Heatmap_coregenes.pdf"), 8.5, 8.5)
+grid.newpage(); draw(ht, heatmap_legend_side = "right"); dev.off()
 
-# Guardar
-pdf("~/Ovary_signatures/6_Depmap_ovary/6_1_1_Heatmap_coregenes.pdf", 8.5, 8.5)
-grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
+png(paste0(OUT_DIR, "6_1_1_Heatmap_coregenes.png"),
+    width = 8.5, height = 8.5, units = "in", res = 600)
+grid.newpage(); draw(ht, heatmap_legend_side = "right"); dev.off()
 
-png("~/Ovary_signatures/6_Depmap_ovary/6_1_1_Heatmap_coregenes.png",
-    width=8.5, height=8.5, units="in", res=600)
-grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
+# ============================================================
+# 5) Ranked dependency plot
+# ============================================================
+
+df_all_summary <- as.data.frame(mat) %>%
+  rownames_to_column("gene") %>%
+  pivot_longer(-gene, names_to = "cell", values_to = "dep") %>%
+  group_by(gene) %>%
+  summarise(
+    mean_dep  = mean(dep, na.rm = TRUE),
+    sd_dep    = sd(dep, na.rm = TRUE),
+    median_dep= median(dep, na.rm = TRUE),
+    pct_neg   = mean(dep < -0.5, na.rm = TRUE),
+    cv        = sd_dep / abs(mean_dep),
+    n_obs     = sum(!is.na(dep)),
+    .groups   = "drop"
+  ) %>%
+  arrange(mean_dep) %>%
+  mutate(rank = row_number())
+
+TOP_N <- 20
+zoom_data <- df_all_summary %>% filter(rank <= TOP_N)
+
+# Color scales (data-driven)
+pal_rank_color <- scale_color_gradientn(
+  colours = c("#B40426", "#FFDD57", "#2166AC"),
+  values = scales::rescale(c(
+    min(df_all_summary$mean_dep, na.rm = TRUE),
+    0,
+    max(df_all_summary$mean_dep, na.rm = TRUE)
+  )),
+  name = "Mean dep. score"
+)
+
+pal_rank_fill <- scale_fill_gradientn(
+  colours = c("#B40426", "#FFDD57", "#2166AC"),
+  values = scales::rescale(c(
+    min(df_all_summary$mean_dep, na.rm = TRUE),
+    0,
+    max(df_all_summary$mean_dep, na.rm = TRUE)
+  )),
+  name = "Mean dep. score"
+)
+
+# Main plot
+p_main <- ggplot(df_all_summary, aes(rank, mean_dep, color = mean_dep)) +
+  geom_ribbon(aes(ymin = mean_dep - sd_dep, ymax = mean_dep + sd_dep, fill = mean_dep),
+              alpha = 0.18, color = NA) +
+  pal_rank_fill +
+  geom_line(linewidth = 0.35, alpha = 0.45, color = "grey50") +
+  geom_point(size = 1, alpha = 0.85) +
+  pal_rank_color +
+  geom_hline(yintercept = -0.5, linetype = "dotted", color = "#B40426", linewidth = 0.7) +
+  annotate("text",
+           x = max(df_all_summary$rank) * 0.98, y = -0.52,
+           label = "dep = −0.5",
+           color = "#B40426", hjust = 1, vjust = 1.4,
+           size = 4, fontface = "italic") +
+  scale_x_continuous(
+    breaks = c(1, seq(100, nrow(df_all_summary), by = 100)),
+    expand = expansion(mult = c(0.02, 0.02))
+  ) +
+  labs(
+    x = "Gene rank",
+    y = "Mean dependency score across ovarian cancer cell lines"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    axis.title = element_text(face = "bold"),
+    panel.grid.minor = element_blank(),
+    legend.position = "top",
+    legend.text  = element_text(size = 7.5),
+    legend.title = element_text(size = 9, face = "bold"),
+    axis.text.y = element_text(size = 12)
+  ) +
+  guides(fill = "none")
+
+# Zoom plot
+p_zoom <- ggplot(zoom_data, aes(rank, mean_dep, color = mean_dep)) +
+  geom_point(size = 2.5, alpha = 0.9) +
+  geom_errorbar(aes(ymin = mean_dep - sd_dep, ymax = mean_dep + sd_dep),
+                width = 0.2, linewidth = 0.4, alpha = 0.7) +
+  geom_label_repel(
+    aes(label = gene),
+    size = 2, fontface = "bold",
+    fill = "white", color = "black",
+    box.padding = 0.3, point.padding = 0.2,
+    segment.color = "#B40426",
+    segment.size = 0.3,
+    max.overlaps = 20, seed = 42
+  ) +
+  scale_color_gradient2(
+    low = "#B40426", mid = "#FFDD57", high = "#2166AC",
+    midpoint = 0, guide = "none"
+  ) +
+  scale_x_continuous(breaks = 1:TOP_N) +
+  labs(
+    x = NULL,
+    y = NULL,
+    title = "Top 20 most essential genes"
+  ) +
+  theme_minimal(base_size = 9) +
+  theme(
+    plot.title = element_text(size = 11, face = "plain", hjust = 0.5),
+    axis.title = element_blank(),   # 🔥 opcional extra (doble seguro)
+    axis.text.x = element_text(angle = 45, hjust = 1, size = 8),
+    axis.text.y = element_text(size = 8),
+    panel.background = element_rect(fill = "white", color = "grey70")
+  )
+
+# Combine plots
+p_combined <- p_main +
+  inset_element(
+    p_zoom,
+    left = 0.55, bottom = 0.1,
+    right = 0.98, top = 0.5,
+    align_to = "plot"
+  )
+
+# ============================================================
+# Save combined plot (correct way)
+# ============================================================
+
+Cairo::CairoPDF(
+  file = paste0(OUT_DIR, "6_2_1_RankedProfile_allgenes_with_zoom.pdf"),
+  width = 9, height = 7
+)
+print(p_combined)
+dev.off()
+
+
+png(paste0(OUT_DIR, "6_2_1_RankedProfile_allgenes_with_zoom.png"),
+    width = 9, height = 7, units = "in", res = 600)
+print(p_combined)
+dev.off()
 
 
 
-#save.image("/STORAGE/csbig/jruiz/Ovary_data/5_Depmap_ovary/5_3_HM_DepMap.RData")
+save.image("/STORAGE/csbig/jruiz/Ovary_data/5_Depmap_ovary/5_3_HM_DepMap.RData")
+
