@@ -15,7 +15,7 @@
 # Input files:
 #   ../4_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds   — RRA results (GEO)
 #   ../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds        — DESeq2 results (TCGA vs AE)
-#   ../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEX.rds    — DESeq2 results (TCGA vs GTEx)
+#   ../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds    — DESeq2 results (TCGA vs GTEx)
 #   ov_tcga_vst.tsv                                 — TCGA VST expression matrix
 #   cancer_ovary_network_300bt_p1e-8.txt            — ARACNe-AP network
 #
@@ -53,7 +53,7 @@ suppressPackageStartupMessages({
 
 geo_rra_1row     <- readRDS("../4_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds")
 DE_full_OVARY_AE <- readRDS("../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds")
-DE_full_OVARY_GTEX <- readRDS("../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEX.rds")
+DE_full_OVARY_GTEX <- readRDS("../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds")
 
 
 # =============================================================================
@@ -130,82 +130,102 @@ spearman_rho <- function(x, y) {
 # Computes global rank correlation and robust subset correlation between
 # the RRA signed Z-score and the DESeq2 Wald statistic. Returns merged
 # data and combined figure (robust scatter + global rank-rank inset).
-compare_rra_vs_deseq2stat <- function(de_tbl,
-                                       geo_rra_all,
-                                       label = "AE-DE",
-                                       top_n = 2000,
-                                       eps   = 1e-300) {
 
+compare_rra_vs_deseq2stat <- function(de_tbl,
+                                      geo_rra_all,
+                                      label = "AE-DE",
+                                      top_n = 2000,
+                                      eps = 1e-300) {
+
+  # ---- Required packages ----
+  suppressPackageStartupMessages({
+    library(dplyr)
+    library(ggplot2)
+    library(patchwork)
+    library(ggrepel)
+  })
+
+  # Armar tablas limpias
   rra <- make_rra_signed_z(geo_rra_all, eps = eps)
   de  <- make_de_stat(de_tbl)
 
-  df <- dplyr::inner_join(rra, de, by = "gene") %>%
-    dplyr::mutate(
-      direction     = factor(direction, levels = c("down", "up")),
+  # Merge por gen
+  df <- inner_join(rra, de, by = "gene") %>%
+    mutate(
+      direction = factor(direction, levels = c("down", "up")),
+      # NUEVO eje X (solo para visualización)
       x_logp_signed = sign(score_rra) * (-log10(p_adj))
     )
 
-  # Global rank correlation on |score|
-  r1          <- rank(-abs(df$score_rra), ties.method = "average")
-  r2          <- rank(-abs(df$stat),      ties.method = "average")
-  rho_global  <- spearman_rho(r1, r2)
+  # ----------- Global correlation (rank(|.|) vs rank(|.|)) -----------
+  r1 <- rank(-abs(df$score_rra), ties.method = "average")
+  r2 <- rank(-abs(df$stat),      ties.method = "average")
+  rho_global <- spearman_rho(r1, r2)
 
-  # Robust subset: top_n genes by |RRA score|
-  df_top <- df %>%
-    dplyr::filter(score_rra != 0) %>%
-    dplyr::arrange(dplyr::desc(abs(score_rra))) %>%
-    dplyr::slice_head(n = min(top_n, dplyr::n()))
+  # ----------- Robust subset -----------
+  df_sig <- df %>%
+    filter(score_rra != 0) %>%
+    arrange(desc(abs(score_rra)))
+
+  df_top <- df_sig %>% slice_head(n = min(top_n, nrow(df_sig)))
 
   rho_top <- spearman_rho(df_top$score_rra, df_top$stat)
 
-  # Labels: top 10 genes per direction in robust subset
-  label_df <- dplyr::bind_rows(
-    df_top %>% dplyr::filter(direction == "up")   %>%
-      dplyr::arrange(dplyr::desc(abs(score_rra))) %>% dplyr::slice_head(n = 10),
-    df_top %>% dplyr::filter(direction == "down")  %>%
-      dplyr::arrange(dplyr::desc(abs(score_rra))) %>% dplyr::slice_head(n = 10)
-  )
+  # ----------- Etiquetas: top 10 genes extremos por lado (en df_top) -----------
+  label_up <- df_top %>%
+    filter(direction == "up") %>%
+    arrange(desc(abs(score_rra))) %>%
+    slice_head(n = 10)
 
+  label_down <- df_top %>%
+    filter(direction == "down") %>%
+    arrange(desc(abs(score_rra))) %>%
+    slice_head(n = 10)
+
+  label_df <- bind_rows(label_up, label_down)
+
+  # ----------- Figures -----------
   dir_cols <- c("up" = "red3", "down" = "dodgerblue3")
 
-  # Inset: global rank-rank scatter
+  # Panel global (inset): rank(|RRA|) vs rank(|DE stat|)
   p_global <- ggplot(df, aes(
-    x     = rank(-abs(score_rra), ties.method = "average"),
-    y     = rank(-abs(stat),      ties.method = "average"),
+    x = rank(-abs(score_rra), ties.method = "average"),
+    y = rank(-abs(stat),      ties.method = "average"),
     color = direction
   )) +
     geom_point(alpha = 0.18, size = 0.6) +
     scale_color_manual(values = dir_cols, drop = FALSE) +
-    scale_x_log10() + scale_y_log10() +
+    scale_x_log10() +
+    scale_y_log10() +
     labs(x = "Rank(|RRA|)", y = paste0("Rank(|", label, " stat|)")) +
     theme_bw(base_size = 9) +
     theme(
-      legend.position  = "none",
+      legend.position = "none",
       plot.background  = element_rect(fill = "transparent", color = NA),
       panel.background = element_rect(fill = "white", color = NA),
-      plot.title       = element_blank(),
-      plot.subtitle    = element_blank(),
-      plot.margin      = margin(2, 2, 2, 2),
-      axis.title       = element_text(size = 8),
-      axis.text        = element_text(size = 7)
+      plot.title = element_blank(),
+      plot.subtitle = element_blank(),
+      plot.margin = margin(2, 2, 2, 2),
+      axis.title = element_text(size = 8),
+      axis.text  = element_text(size = 7)
     )
 
-  # Main panel: signed -log10(p_adj) vs DESeq2 stat
+  # Panel robusto (principal): signed -log10(p_adj) vs stat + etiquetas
   p_robust <- ggplot(df_top, aes(x = x_logp_signed, y = stat, color = direction)) +
     geom_point(alpha = 0.35, size = 1.2) +
     scale_color_manual(values = dir_cols, drop = FALSE) +
     geom_hline(yintercept = 0, linetype = "dashed") +
     geom_vline(xintercept = 0, linetype = "dashed") +
     ggrepel::geom_text_repel(
-      data             = label_df,
+      data = label_df,
       aes(label = gene),
-      size             = 3.2,
-      max.overlaps     = Inf,
-      box.padding      = 0.35,
-      point.padding    = 0.2,
+      size = 3.2,
+      max.overlaps = Inf,
+      box.padding = 0.35,
+      point.padding = 0.2,
       min.segment.length = 0,
-      segment.alpha    = 0.6,
-      show.legend      = FALSE
+      segment.alpha = 0.6,
+      show.legend = FALSE
     ) +
     labs(
       title    = "Genes with strongest RRA evidence (top |RRA|)",
@@ -217,28 +237,33 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
       y = paste0(label, " DESeq2 stat")
     ) +
     theme_bw(base_size = 13) +
-    theme(legend.position = "top", legend.title = element_blank())
+    theme(
+      legend.position = "top",
+      legend.title = element_blank()
+    )
 
+  # Figura combinada: robusto + inset global
   p_combined <- p_robust +
-    patchwork::inset_element(
+    inset_element(
       p_global,
       left = 0.58, bottom = 0.07, right = 0.97, top = 0.42,
       align_to = "panel"
     )
 
   list(
-    merged           = df,
-    robust_subset    = df_top,
-    label_points     = label_df,
+    merged = df,
+    robust_subset = df_top,
+    label_points = label_df,
     rho_global_ranks = rho_global,
-    rho_top_signed   = rho_top,
-    n_global         = nrow(df),
-    n_robust         = nrow(df_top),
-    plot_global      = p_global,
-    plot_robust      = p_robust,
-    plot_combined    = p_combined
+    rho_top_signed = rho_top,
+    n_global = nrow(df),
+    n_robust = nrow(df_top),
+    plot_global = p_global,
+    plot_robust = p_robust,
+    plot_combined = p_combined
   )
 }
+
 
 
 # -----------------------------------------------------------------------------
@@ -412,7 +437,7 @@ m <- m %>%
 # FALSE = at least one source disagrees
 table(m$s_rra == m$s_ae & m$s_rra == m$s_gtex)
 # FALSE  TRUE
-#  7849  5437
+#  7784  6576
 
 
 # -----------------------------------------------------------------------------
@@ -682,6 +707,10 @@ core_mrs <- dplyr::as_tibble(mra_core$table) %>%
   dplyr::arrange(dplyr::desc(abs(NES))) %>%
   dplyr::mutate(rank_abs_NES = dplyr::row_number())
 
+# "Is TF? == Yes" & "TF assessment == Known motif" in DatabaseExtract_v_1.01.txt from humantfs.ccbr.utoronto.ca
+TFlist <- readLines("centroids/onlyTFs.txt")
+
+
 core_mrs_processed <- core_mrs %>%
   dplyr::mutate(
     # Activity classification (FDR < 0.05, |NES| >= 2)
@@ -710,7 +739,9 @@ core_mrs_processed <- core_mrs %>%
       padj_emp < 0.05 & NES <= -2 & signature_score < 0        ~ "Repressed & downregulated",
       padj_emp < 0.05 & NES <= -2 & signature_score > 0        ~ "Repressed but upregulated",
       TRUE                                                      ~ "Other"
-    )
+    ),
+    # Whether the regulator is an annotated transcription factor
+    isTF = TF %in% TFlist
   ) %>%
   dplyr::arrange(dplyr::desc(NES))
 
@@ -725,7 +756,7 @@ fdr_cut        <- 0.05
 nes_cut        <- 2
 label_n        <- 15   # top N per side to label
 
-df_vol <- core_mrs_processed %>%
+df_vol <- core_mrs_processed[core_mrs_processed$isTF== TRUE,] %>%
   dplyr::mutate(
     # TFs absent from signature are offset to the left (not zero)
     sig_x = ifelse(
