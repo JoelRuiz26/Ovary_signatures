@@ -1,6 +1,6 @@
 # radian
 
-setwd("/STORAGE/csbig/hachepunto/adenosina/Ovary_signatures/4_DEG_GEO")
+setwd("/STORAGE/csbig/hachepunto/adenosina/Ovary_signatures/2_DEG_GEO")
 
 ## ============================================================
 ## Paquetes necesarios
@@ -1083,3 +1083,115 @@ write.table(rra_report_all,
 								sep  = "\t",
 								row.names = FALSE,
 								quote = FALSE)
+
+
+
+# =========================
+# CONTROL: Submuestreo aleatorio para descartar sesgo de tamaño
+# (respuesta al comentario de Joel)
+# =========================
+
+# Este análisis verifica que la mejora en correlación al restringir a genes
+# con fuerte señal RRA no sea un artefacto del tamaño de muestra, sino
+# una propiedad real de los genes más reproducibles.
+
+library(readr)
+
+# --- Cargar estadísticos DESeq2 de TCGA (necesitas estas rutas) ---
+DE_AE   <- readRDS("../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds")
+DE_GTEx <- readRDS("../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds")
+
+# DE_AE   <- readRDS("../../../../jruiz/Ovary_data/1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds")
+# DE_GTEx <- readRDS("../../../../jruiz/Ovary_data/0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds")
+
+
+# --- Deduplicar por gen (abs_max) antes del join ---
+de_ae_uniq <- DE_AE %>%
+  select(gene = Symbol_autho, stat_ae = stat) %>%
+  mutate(gene = as.character(gene)) %>%
+  filter(!is.na(gene), nzchar(gene), is.finite(stat_ae)) %>%
+  group_by(gene) %>%
+  slice_max(abs(stat_ae), n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+de_gtex_uniq <- DE_GTEx %>%
+  select(gene = Symbol_autho, stat_gtex = stat) %>%
+  mutate(gene = as.character(gene)) %>%
+  filter(!is.na(gene), nzchar(gene), is.finite(stat_gtex)) %>%
+  group_by(gene) %>%
+  slice_max(abs(stat_gtex), n = 1, with_ties = FALSE) %>%
+  ungroup()
+
+# --- Construir tabla conjunta ---
+df_full <- rra_report_all %>%
+  inner_join(de_ae_uniq,   by = "gene") %>%
+  inner_join(de_gtex_uniq, by = "gene") %>%
+  filter(is.finite(rra_z), is.finite(stat_ae), is.finite(stat_gtex))
+
+n_total <- nrow(df_full)
+
+# --- Correlación genome-wide (baseline) ---
+rho_ae_full   <- cor(df_full$rra_z, df_full$stat_ae,   method = "spearman")
+rho_gtex_full <- cor(df_full$rra_z, df_full$stat_gtex, method = "spearman")
+message("Correlación genome-wide — AE: ", round(rho_ae_full, 3),
+        " | GTEx: ", round(rho_gtex_full, 3))
+
+# --- Correlación en el subconjunto de genes con fuerte señal RRA ---
+# Usa el mismo criterio que en el manuscrito (top N por abs_rra_z)
+n_sub <- 2000  # ajusta al valor real que usaste
+df_top <- df_full %>% arrange(desc(abs_rra_z)) %>% slice_head(n = n_sub)
+
+rho_ae_top   <- cor(df_top$rra_z, df_top$stat_ae,   method = "spearman")
+rho_gtex_top <- cor(df_top$rra_z, df_top$stat_gtex, method = "spearman")
+message("Correlación top-", n_sub, " RRA — AE: ", round(rho_ae_top, 3),
+        " | GTEx: ", round(rho_gtex_top, 3))
+
+# --- Control de Joel: distribución nula por submuestreo aleatorio ---
+set.seed(42)
+n_perm <- 1000
+
+null_cors <- replicate(n_perm, {
+  idx <- sample(n_total, n_sub)
+  df_s <- df_full[idx, ]
+  c(
+    ae   = cor(df_s$rra_z, df_s$stat_ae,   method = "spearman"),
+    gtex = cor(df_s$rra_z, df_s$stat_gtex, method = "spearman")
+  )
+})
+
+null_ae   <- null_cors["ae",   ]
+null_gtex <- null_cors["gtex", ]
+
+# p-value empírico (proporción de nulos >= observado)
+p_ae   <- mean(abs(null_ae)   >= abs(rho_ae_top))
+p_gtex <- mean(abs(null_gtex) >= abs(rho_gtex_top))
+
+message("p-valor empírico (submuestreo) — AE: ", p_ae, " | GTEx: ", p_gtex)
+
+# --- Figura para suplementaria ---
+library(ggplot2)
+
+df_null <- data.frame(
+  rho    = c(null_ae, null_gtex),
+  source = rep(c("AE", "GTEx"), each = n_perm)
+)
+obs_df <- data.frame(
+  rho    = c(rho_ae_top, rho_gtex_top),
+  source = c("AE", "GTEx")
+)
+
+p_joel <- ggplot(df_null, aes(x = rho)) +
+  geom_histogram(bins = 50, fill = "grey70", color = "white") +
+  geom_vline(data = obs_df, aes(xintercept = rho),
+             color = "red3", linewidth = 1, linetype = "dashed") +
+  facet_wrap(~source, ncol = 2) +
+  labs(
+    title = paste0("Null distribution: random subsets of n = ", n_sub, " genes"),
+    subtitle = "Red dashed line = observed correlation in top-RRA subset",
+    x = "Spearman ρ (RRA z-score vs DESeq2 stat)",
+    y = "Count"
+  ) +
+  theme_bw(base_size = 13)
+
+ggsave("FigS_submuestreo_control_Joel.png", p_joel, width = 9, height = 4, dpi = 300)
+ggsave("FigS_submuestreo_control_Joel.pdf", p_joel, width = 9, height = 4)
