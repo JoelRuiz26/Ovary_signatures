@@ -25,38 +25,29 @@ options(stringsAsFactors = FALSE)
 # Paths
 # ============================================================
 
-DGE_PATH <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_2_allgenes.tsv"
+DGE_PATH <- "/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_2_core_genes_filtered.rds"
 OUT_DIR  <- "~/Ovary_signatures/6_Depmap_ovary/"
 
 # ============================================================
 # 1) Load consensus genes
 # ============================================================
 
-DGE_list_shared <- vroom(DGE_PATH, show_col_types = FALSE)
+DGE_list_shared <- readRDS(DGE_PATH) #586
 
 cons_genes <- DGE_list_shared %>%
-  filter(n_sources == 3,
-         !is.na(consensus_direction),
-         consensus_direction != "none") %>%
   transmute(gene_u = toupper(gene)) %>%
   distinct()
 
 # ============================================================
 # 2) Load DepMap CRISPR ovarian cell lines
 # ============================================================
-meta <- depmap_metadata()
-
-ovary_lines <- meta %>%
-  filter(lineage == "ovary") %>%
-  filter(primary_disease== "Ovarian Cancer") %>% 
-  pull(depmap_id)
 
 crispr_ovary_all <- depmap_crispr() %>%
-  filter(depmap_id %in% ovary_lines) %>%
+  filter(grepl("_OVARY$", cell_line)) %>%
   mutate(
     gene_u = toupper(gene_name),
     dep_raw = dependency
-  )%>%
+  ) %>%
   group_by(cell_line) %>%
   mutate(dep_scaled_m11 = dep_raw) %>%
   ungroup()
@@ -152,7 +143,7 @@ df_all_summary <- as.data.frame(mat) %>%
   arrange(mean_dep) %>%
   mutate(rank = row_number())
 
-TOP_N <- 10
+TOP_N <- 20
 zoom_data <- df_all_summary %>% filter(rank <= TOP_N)
 
 # Color scales (data-driven)
@@ -231,7 +222,7 @@ p_zoom <- ggplot(zoom_data, aes(rank, mean_dep, color = mean_dep)) +
   labs(
     x = NULL,
     y = NULL,
-    title = "Top 10 most essential genes"
+    title = "Top 20 most essential genes"
   ) +
   theme_minimal(base_size = 9) +
   theme(
@@ -246,7 +237,7 @@ p_zoom <- ggplot(zoom_data, aes(rank, mean_dep, color = mean_dep)) +
 p_combined <- p_main +
   inset_element(
     p_zoom,
-    left = 0.50, bottom = 0.09,
+    left = 0.55, bottom = 0.09,
     right = 0.98, top = 0.56,
     align_to = "plot"
   )
@@ -257,14 +248,14 @@ p_combined
 
 Cairo::CairoPDF(
   file = paste0(OUT_DIR, "6_2_1_RankedProfile_allgenes_with_zoom.pdf"),
-  width = 8, height = 8.5
+  width = 9, height = 7
 )
 print(p_combined)
 dev.off()
 
 
 png(paste0(OUT_DIR, "6_2_1_RankedProfile_allgenes_with_zoom.png"),
-    width = 8, height = 8.5, units = "in", res = 600)
+    width = 9, height = 7, units = "in", res = 600)
 print(p_combined)
 dev.off()
 

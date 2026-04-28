@@ -1,5 +1,4 @@
 #!/usr/bin/env Rscript
-
 # ============================================================
 # CRISPR dependency analysis – ovarian cancer
 # ============================================================
@@ -21,44 +20,36 @@ suppressPackageStartupMessages({
 options(stringsAsFactors = FALSE)
 
 # ============================================================
-# 1) Load consensus genes
+# 1) Load regulones TF
 # ============================================================
 
 # All names of TF in regulones
-Top_MR_DepMap <- readRDS("~/Ovary_signatures/6_Depmap_ovary/6_4_regulons_sig_filtered.rds")
-Top_MR_DepMap <- names(Top_MR_DepMap)
-length(Top_MR_DepMap) #46
+Top_MR_DepMap <- readRDS("/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_0_1_Top_elbow_regulones_nes.rds")
+MR_DGE <- Top_MR_DepMap %>% filter(isCore ==TRUE) %>% pull(TF) #11
 
-
-MR_DGE <- readRDS(file = "~/Ovary_signatures/6_Depmap_ovary/6_3_1_names_TF_DEG_TopNES.rds")
-length(MR_DGE) #23
-# 
-MR_DGE <- toupper(MR_DGE)
+Top_MR_DepMap <- Top_MR_DepMap %>% pull(TF)
+length(Top_MR_DepMap) #27
 
 # ============================================================
 # 2) DepMap CRISPR ovarian cell lines
 # ============================================================
-meta <- depmap_metadata()
-
-ovary_lines <- meta %>%
-  filter(lineage == "ovary") %>%
-  filter(primary_disease== "Ovarian Cancer") %>% 
-  pull(depmap_id)
 
 crispr_ovary_all <- depmap_crispr() %>%
-  filter(depmap_id %in% ovary_lines) %>%
+  filter(grepl("_OVARY$", cell_line)) %>%
   mutate(
     gene_u = toupper(gene_name),
     dep_raw = dependency
-  )%>%
+  ) %>%
   group_by(cell_line) %>%
-  mutate(dep_scaled_m11 = dep_raw) %>%
+  mutate(
+    dep_scaled_m11 = dep_raw
+  ) %>%
   ungroup()
+
+colnames(crispr_ovary_all)
 
 cat("Rows OVARY:", nrow(crispr_ovary_all), "\n")
 cat("Cell lines:", n_distinct(crispr_ovary_all$cell_line), "\n")
-
-colnames(crispr_ovary_all)
 
 
 # ============================================================
@@ -153,17 +144,4 @@ grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
 png("~/Ovary_signatures/6_Depmap_ovary/6_4_1_Heatmap_TF.png",
     width=8.5, height=8.5, units="in", res=600)
 grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
-
-
-
-
-resultado <- data.frame(gene = rownames(mat), media = rowMeans(mat, na.rm = TRUE), 
-                        mediana = apply(mat, 1, median, na.rm = TRUE)) %>% arrange(desc(media))
-
-median <- resultado %>% filter(mediana <= -0.5) %>% pull(gene)
-
-
-
-
-
 
