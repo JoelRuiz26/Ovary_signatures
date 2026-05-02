@@ -1,6 +1,7 @@
 # radian
 
-setwd("/STORAGE/csbig/hachepunto/adenosina/Ovary_signatures/2_DEG_GEO")
+#setwd("/STORAGE/csbig/hachepunto/adenosina/Ovary_signatures/2_DEG_GEO")
+setwd("~/Ovary_signatures/2_DEG_GEO")
 
 ## ============================================================
 ## Paquetes necesarios

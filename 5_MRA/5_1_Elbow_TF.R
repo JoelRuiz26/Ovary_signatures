@@ -14,12 +14,12 @@ library(ggplot2)
 # ------------------------------------------------------------
 
 full_genes <- vroom(
-  "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_2_allgenes.tsv") %>% filter(n_sources==3)
+  "~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv") %>% filter(n_sources==3)
 # TF list
 TF_list <- vroom(
   "~/Ovary_signatures/5_MRA/core_mra.tsv",show_col_types=FALSE)
 
-anot_genes <- readRDS("~/Ovary_signatures/3_Consensus_DGE_analysis/3_3_Fano_Factor/3_3_2_gene_annotation_UNION_universe.rds")
+anot_genes <- readRDS("~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_2_gene_annotation_UNION_universe.rds")
 
 # core genes
 core_list <- full_genes %>%
@@ -82,7 +82,7 @@ tf_names <- df %>%
   dplyr::select(TF, NES, direction) %>% as.data.frame()
 
 
-saveRDS(tf_names,"/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_0_1_Top_elbow_regulones.rds")
+saveRDS(tf_names,"~/Ovary_signatures/5_MRA/5_0_1_Top_elbow_regulones.rds")
 
 
 tf_names <- tf_names%>%
@@ -102,13 +102,13 @@ length(tf_names) #328
 # Plot elbow
 # ------------------------------------------------------------
 
-outdir <- file.path("/STORAGE/csbig/jruiz/Ovary_data/6_MRA/")
+outdir <- file.path("~/Ovary_signatures/5_MRA/")
 
 
-ggsave(file.path(outdir, "6_0_Elbow_plot_regulons.pdf"),
+ggsave(file.path(outdir, "5_0_Elbow_plot_regulons.pdf"),
        p_elbow, width = 6, height = 4)
 
-ggsave(file.path(outdir, "6_0_Elbow_plot_regulons.png"),
+ggsave(file.path(outdir, "5_0_Elbow_plot_regulons.png"),
        p_elbow, width = 6, height = 4, dpi = 600)
 
 
@@ -117,11 +117,11 @@ ggsave(file.path(outdir, "6_0_Elbow_plot_regulons.png"),
 # b) Core genes in regulons
 # ------------------------------------------------------------
 
-Master_Regulator <- readRDS("/STORAGE/csbig/jruiz/Ovary_data/6_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
+Master_Regulator <- readRDS("~/Ovary_signatures/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
 
 # Filtrar regulones
 regulons_filtered <- Master_Regulator[names(Master_Regulator) %in% tf_names]
-saveRDS(regulons_filtered,"/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_0_Top_elbow_regulones.rds")
+saveRDS(regulons_filtered,"~/Ovary_signatures/5_MRA/5_0_Top_elbow_regulones.rds")
 
 
 # Extraer todos los genes de regulons_filtered
@@ -131,7 +131,7 @@ regulon_genes <- unique(unlist(lapply(regulons_filtered, function(x) {
 
 # Guardar pool de genes
 saveRDS(regulon_genes,
-        "/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_1_regulon_genes_pool.rds")
+        "~/Ovary_signatures/5_MRA/5_1_regulon_genes_pool.rds")
 
 
 # Filtrar core_genes con ese pool
@@ -140,8 +140,6 @@ core_genes_filtered <- full_genes %>%
 
 # Guardar core genes filtrados
 saveRDS(core_genes_filtered,
-        "/STORAGE/csbig/jruiz/Ovary_data/6_MRA/6_2_core_genes_filtered.rds")
-
-
+        "~/Ovary_signatures/5_MRA/5_2_core_genes_filtered.rds")
 
 

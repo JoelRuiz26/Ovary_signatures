@@ -21,12 +21,14 @@ suppressPackageStartupMessages({
 
 options(stringsAsFactors = FALSE)
 
+
 # ============================================================
 # Paths
 # ============================================================
 
-DGE_PATH <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_2_allgenes.tsv"
+DGE_PATH <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv"
 OUT_DIR  <- "~/Ovary_signatures/6_Depmap_ovary/"
+if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 
 # ============================================================
 # 1) Load consensus genes
@@ -152,6 +154,13 @@ df_all_summary <- as.data.frame(mat) %>%
   arrange(mean_dep) %>%
   mutate(rank = row_number())
 
+df_crisp_deg <- df_all_summary %>% left_join(DGE_list_shared , by = "gene") %>% 
+  dplyr::select(gene, median_dep,mean_log2FC,consensus_direction) %>% 
+  mutate(direction = consensus_direction,
+         median_log2FC = mean_log2FC) %>% dplyr::select(-consensus_direction, -mean_log2FC)
+vroom_write(df_crisp_deg, paste0(OUT_DIR, "6_1_0_Dependency_DEG_core.tsv"))
+
+
 TOP_N <- 10
 zoom_data <- df_all_summary %>% filter(rank <= TOP_N)
 
@@ -256,19 +265,18 @@ p_combined
 # ============================================================
 
 Cairo::CairoPDF(
-  file = paste0(OUT_DIR, "6_2_1_RankedProfile_allgenes_with_zoom.pdf"),
+  file = paste0(OUT_DIR, "6_1_2_RankedProfile_allgenes.pdf"),
   width = 8, height = 8.5
 )
 print(p_combined)
 dev.off()
 
 
-png(paste0(OUT_DIR, "6_2_1_RankedProfile_allgenes_with_zoom.png"),
+png(paste0(OUT_DIR, "6_1_2_RankedProfile_allgenes.png"),
     width = 8, height = 8.5, units = "in", res = 600)
 print(p_combined)
 dev.off()
 
 
-
-save.image("/STORAGE/csbig/jruiz/Ovary_data/5_Depmap_ovary/5_3_HM_DepMap.RData")
+#save.image("/STORAGE/csbig/jruiz/Ovary_data/5_Depmap_ovary/5_3_HM_DepMap.RData")
 

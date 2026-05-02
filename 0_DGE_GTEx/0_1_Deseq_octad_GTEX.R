@@ -11,6 +11,13 @@ out_dir <- "~/Ovary_signatures/0_DGE_GTEx"
 setwd(out_dir)
 
 h5_path <- "/STORAGE/csbig/jruiz/Octad/octad.counts.and.tpm.h5"
+#h5_path <- file.path("/STORAGE/csbig/jruiz/Octad/octad.counts.and.tpm.h5")
+#if (!file.exists(h5_path)) {
+#  url <- "https://chenlab-data-public.s3-us-west-2.amazonaws.com/octad/octad.counts.and.tpm.h5"
+#  message(">> Descargando HDF5 (~3 GB) a: ", h5_path)
+#  download.file(url, destfile = h5_path, mode = "wb", quiet = FALSE)
+#}
+#stopifnot(file.exists(h5_path))  # ensure
 
 lfc_thr  <- 1.0
 padj_thr <- 0.01
@@ -33,7 +40,7 @@ controls_all <- phenoDF %>%
   pull(sample.id)
 
 metadata <- phenoDF %>% filter(sample.id %in% c(case_ovary, controls_all))
-saveRDS(metadata, "0_1_metadata_GTEx.rds")
+#saveRDS(metadata, "0_1_metadata_GTEx.rds")
 
 cat("Cases:", length(case_ovary), "| Controls:", length(controls_all), "\n")
 

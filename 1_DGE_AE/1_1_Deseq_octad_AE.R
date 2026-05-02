@@ -39,7 +39,7 @@ cat("Autoencoder controls:", length(controls_all), "\n")
 
 # Metadata guardado
 metadata <- phenoDF %>% filter(sample.id %in% c(case_ovary, controls_all))
-saveRDS(metadata, "1_1_metadata_AE.rds")
+#saveRDS(metadata, "1_1_metadata_AE.rds")
 
 # (opcional) QC rápido de controles
 metadata_control <- metadata %>% filter(sample.type %in% c("normal", "adjacent"))
