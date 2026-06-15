@@ -119,26 +119,26 @@ ggsave(file.path(outdir, "5_0_Elbow_plot_regulons.png"),
 
 Master_Regulator <- readRDS("~/Ovary_signatures/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
 
-# Filtrar regulones
+# Filter regulons
 regulons_filtered <- Master_Regulator[names(Master_Regulator) %in% tf_names]
 saveRDS(regulons_filtered,"~/Ovary_signatures/5_MRA/5_0_Top_elbow_regulones.rds")
 
 
-# Extraer todos los genes de regulons_filtered
+# Extract all genes from regulons_filtered
 regulon_genes <- unique(unlist(lapply(regulons_filtered, function(x) {
   names(x$tfmode)
 })))
 
-# Guardar pool de genes
+# Save gene pool
 saveRDS(regulon_genes,
         "~/Ovary_signatures/5_MRA/5_1_regulon_genes_pool.rds")
 
 
-# Filtrar core_genes con ese pool
+# Filter core_genes against that gene pool
 core_genes_filtered <- full_genes %>%
   filter(toupper(gene) %in% toupper(regulon_genes))
 
-# Guardar core genes filtrados
+# Save filtered core genes
 saveRDS(core_genes_filtered,
         "~/Ovary_signatures/5_MRA/5_2_core_genes_filtered.rds")
 

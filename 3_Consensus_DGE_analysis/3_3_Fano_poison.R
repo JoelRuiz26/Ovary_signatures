@@ -58,29 +58,16 @@ print(summary(fano_GTEX$fano_factor))
 # =========================
 all_genes <- vroom::vroom("~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv")
 
-# normaliza nombres y arregla duplicados (ae/gtex/geo salen 2 veces: dir + 0/1)
-names(all_genes) <- tolower(names(all_genes))
-names(all_genes) <- make.unique(names(all_genes))
-
-# arregla duplicados: primero renombra columnas de dirección
+# The TSV has direction columns in uppercase (GTEx, AE, GEO) and binary
+# flags in lowercase (gtex, ae, geo); accessed directly by name.
 all_genes <- all_genes %>%
-  dplyr::rename(
-    ae_dir   = ae,
-    gtex_dir = gtex,
-    geo_dir  = geo
-  ) %>%
-  dplyr::rename(
-    ae   = ae.1,
-    gtex = gtex.1,
-    geo  = geo.1
-  ) %>%
   dplyr::mutate(
     ae   = as.integer(ae),
     gtex = as.integer(gtex),
     geo  = as.integer(geo)
   )
 
-# etiqueta de subconjunto por presencia/ausencia
+# subset label by presence/absence
 map_src <- all_genes %>%
   dplyr::transmute(
     ensembl = ensembl,
@@ -98,7 +85,7 @@ map_src <- all_genes %>%
   ) %>%
   dplyr::distinct(ensembl, dataset)
 
-# pega el subconjunto a ambos fano
+# join subset label to both fano tables
 fano_GTEX <- fano_GTEX %>% dplyr::left_join(map_src, by = c("gene" = "ensembl"))
 fano_AE   <- fano_AE   %>% dplyr::left_join(map_src, by = c("gene" = "ensembl"))
 # =========================
@@ -179,7 +166,7 @@ p_subset <- ggplot(df_subset_zoom, aes(x = fano_factor)) +
 print(p_subset + coord_cartesian(xlim = c(0, 4000)))
 
 # =========================
-# 7.3) VIOLIN (tu violín original + Δ)
+# 7.3) VIOLIN (original violin + Δ)
 # =========================
 df_violin <- df_subset_zoom %>%
   mutate(
@@ -192,7 +179,7 @@ df_violin <- df_subset_zoom %>%
 
 DODGE_W <- 1
 
-# --- plot base (NO cambies estética, solo el dodge) ---
+# --- base plot (aesthetic and dodge settings) ---
 p_subset_violin <- ggplot(
   df_violin,
   aes(
@@ -229,7 +216,7 @@ p_subset_violin <- ggplot(
   )
 
 # =========================
-# Brackets + Δ (como lo tenías)
+# Brackets + Δ annotations
 # =========================
 x_base <- setNames(seq_along(levels(df_violin$dataset)), levels(df_violin$dataset))
 
@@ -276,7 +263,7 @@ pair_inter <- tibble(
 )
 
 p_subset_violin <- p_subset_violin +
-  # intra: GTEX_AE (verde) y GTEX_AE_GEO (rojo)
+  # intra-group: GTEX_AE (green) and GTEX_AE_GEO (red)
   geom_segment(
     data = pair_intra,
     aes(x = x_br, xend = x_br, y = y_low, yend = y_high, color = col),
@@ -301,7 +288,7 @@ p_subset_violin <- p_subset_violin +
     inherit.aes = FALSE,
     size = 4
   ) +
-  # inter: AE_GEO vs GTEX_GEO (gris)
+  # inter-group: AE_GEO vs GTEX_GEO (grey)
   geom_segment(
     data = pair_inter,
     aes(x = x_br, xend = x_br, y = y_low, yend = y_high, color = col),
@@ -331,7 +318,7 @@ p_subset_violin <- p_subset_violin +
 print(p_subset_violin + coord_cartesian(ylim = c(0, 12000)))
 
 # =========================================================
-# 7.4) NUEVOS VIOLINES SEPARADOS (MISMA estética)
+# 7.4) SEPARATED VIOLINS (SAME aesthetics)
 #    MINIMAL CHANGE:
 #    - Panel (1) is now TOTALS: AE_total vs GTEX_total (so Δ updates)
 #    - Panels (2)-(4) stay identical
@@ -478,7 +465,7 @@ add_inter_delta_pair <- function(p, df_in) {
 }
 
 # ---- (1) AE_total vs GTEX_total (REPLACES old AE vs GTEX exclusive panel) ----
-df_v1 <- df_subset_zoom %>%   # <-- antes era df_plot_subset
+df_v1 <- df_subset_zoom %>%   # <-- formerly df_plot_subset
   mutate(
     dataset = ifelse(list == "AE", "AE_total", "GTEX_total"),
     dataset = factor(dataset, levels = c("AE_total", "GTEX_total"))
@@ -561,7 +548,7 @@ p_violin_AE_GTEX <- p_violin_AE_GTEX +
 
 print(p_violin_AE_GTEX)
 
-# ---- (2) GTEX_AE (verde) ----
+# ---- (2) GTEX_AE (green) ----
 df_v2 <- df_violin %>%
   filter(dataset == "GTEX_AE") %>%
   droplevels()
@@ -577,7 +564,7 @@ if (all(c("GTEx", "AE") %in% levels(df_v2$list))) {
 }
 print(p_violin_GTEX_AE)
 
-# ---- (3) GTEX_AE_GEO (rojo) ----
+# ---- (3) GTEX_AE_GEO (red) ----
 df_v3 <- df_violin %>%
   filter(dataset == "GTEX_AE_GEO") %>%
   droplevels()
@@ -632,7 +619,7 @@ save_plot_both <- function(p, file_stub, width = 9, height = 6, dpi = 300) {
   )
 }
 
-# ---- Guardar LINES ----
+# ---- Save line plot ----
 p_subset_0_4000 <- p_subset + coord_cartesian(xlim = c(0, 4000))
 save_plot_both(
   p         = p_subset_0_4000,
@@ -641,7 +628,7 @@ save_plot_both(
   height    = 6
 )
 
-# ---- Guardar VIOLIN original con Δ ----
+# ---- Save original violin with Δ ----
 p_violin_0_14000 <- p_subset_violin + coord_cartesian(ylim = c(0, 12000))
 save_plot_both(
   p         = p_violin_0_14000,
@@ -650,7 +637,7 @@ save_plot_both(
   height    = 6
 )
 
-# ---- Guardar NUEVOS violines separados ----
+# ---- Save separated violin plots ----
 save_plot_both(
   p         = p_violin_AE_GTEX,
   file_stub = "3_3_4_fano_violin_AE_total_vs_GTEX_total",

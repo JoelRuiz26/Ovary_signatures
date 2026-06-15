@@ -20,7 +20,7 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 # 1) Load data
 # ============================================================
-###Get universe all regulones ###
+### Get universe of all regulons ###
 names_all_regulones <- vroom("~/Ovary_signatures/5_MRA/core_mra.tsv")
 names_all_regulones <- names_all_regulones %>% filter(padj_emp <= 0.05) #1174
 
@@ -30,12 +30,12 @@ length(names(regulons_filtered)) #[1] 1174
 #saveRDS(names(regulons_filtered), file = "~/Ovary_signatures/6_Depmap_ovary/6_2_regulons_all.rds")
 
 
-##Get significant regulones (from NES elbow analysis, top)#####
+## Get top regulons (from NES elbow analysis) ##
 regulons <- readRDS("~/Ovary_signatures/5_MRA/5_0_Top_elbow_regulones.rds")
 regulons_names <- names(regulons) #328
 #saveRDS(regulons_names, file = "~/Ovary_signatures/6_Depmap_ovary/6_2_regulons_names_topNES.rds")
 
-#Get DF of DEGs with high dependency
+# Load DEG-dependency table
 df <- vroom("~/Ovary_signatures/6_Depmap_ovary/6_1_0_Dependency_DEG_core.tsv",
             show_col_types = FALSE)
 
@@ -105,7 +105,7 @@ results <- results %>%
     log10_p = -log10(p_adj)
   ) %>%
   arrange(p_adj)
-#get only top NES
+# keep only top-NES regulons
 results <- results %>% filter(regulon %in% regulons_names)
 length(results$regulon) #[1] 328
 
@@ -118,7 +118,7 @@ results_sig <- results %>%
 
 length(results_sig$regulon) # 46 with -1 and 0.01 most extrinsec
                             # 63  "  0.5  "  0.01 
-#Identify the TF DGE
+# Identify TFs that are also differentially expressed
 TF_DGE_DepMap <- results_sig %>% filter(regulon %in% df$gene) %>% pull(regulon)
 length(TF_DGE_DepMap) #23
 saveRDS(TF_DGE_DepMap, file = "~/Ovary_signatures/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds")
@@ -137,8 +137,8 @@ plot_df <- results_sig %>%
 # ============================================================
 label_face <- ifelse(
   levels(plot_df$regulon) %in% TF_DGE_DepMap,
-  "bold",   # TF marcados → negrita
-  "plain"   # resto → normal
+  "bold",   # bold for marked TFs
+  "plain"   # plain for others
 )
 
 
@@ -184,7 +184,7 @@ p <- ggplot(plot_df, aes(x = overlap, y = regulon, fill = log10_p)) +
 p
 
 # ============================================================
-# 9) Get regulones interest
+# 9) Get regulons of interest
 # ============================================================
 
 regulons_sig <- regulons_filtered[names(regulons_filtered) %in% results_sig$regulon]
@@ -211,16 +211,6 @@ saveRDS(
   file = "~/Ovary_signatures/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds")
 
 
-# unique vector  TFs + genes
-#all_genes <- unique(c(
-#  names(regulons_sig_filtered),
-#  unlist(lapply(regulons_sig_filtered, function(x) names(x$tfmode)))
-#))
-#length(all_genes) #[1] 99
-
-# Guardar si quieres
-#saveRDS(all_genes,
-#        "~/Ovary_signatures/6_Depmap_ovary/6_2_2_Important_regulones_1.rds")
 
 # ============================================================
 # 9) Save figure (high resolution, vertical layout)

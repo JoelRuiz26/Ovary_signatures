@@ -37,11 +37,9 @@ controls_all <- computeRefTissue(
 
 cat("Autoencoder controls:", length(controls_all), "\n")
 
-# Metadata guardado
 metadata <- phenoDF %>% filter(sample.id %in% c(case_ovary, controls_all))
-#saveRDS(metadata, "1_1_metadata_AE.rds")
 
-# (opcional) QC rápido de controles
+# (optional) quick QC of controls
 metadata_control <- metadata %>% filter(sample.type %in% c("normal", "adjacent"))
 cat("Controls breakdown (biopsy.site x data.source):\n")
 print(table(metadata_control$biopsy.site, metadata_control$data.source))
@@ -60,7 +58,7 @@ res <- octad::diffExp(
   output            = FALSE
 )
 
-# ---- FIX: evita pvalue/padj = 0 por underflow (sin columnas *_safe) ----
+# ---- FIX: prevent pvalue/padj = 0 due to floating-point underflow ----
 eps <- .Machine$double.xmin
 
 if ("pvalue" %in% names(res)) {
@@ -73,11 +71,11 @@ if ("padj" %in% names(res)) {
   res$padj[!is.na(res$padj) & res$padj <= 0] <- eps
 }
 
-# Recalcula -log10 usando las columnas ya corregidas
+# Recompute -log10 from the corrected columns
 res$mlog10_p    <- if ("pvalue" %in% names(res)) -log10(res$pvalue) else NA_real_
 res$mlog10_padj <- if ("padj"   %in% names(res)) -log10(res$padj)   else NA_real_
 
-# Guardar resultado completo
+# Save full result
 saveRDS(res, "DE_full_OVARY_DESeq2_AE.rds")
 
 # ===================== BUILD SIGNATURES (ALL + SIGNIFIC) ===================== #

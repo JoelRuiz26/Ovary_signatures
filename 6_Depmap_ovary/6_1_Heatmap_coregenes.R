@@ -1,5 +1,4 @@
 #!/usr/bin/env Rscript
-#load("/STORAGE/csbig/jruiz/Ovary_data/5_Depmap_ovary/5_3_HM_DepMap.RData")
 
 # ============================================================
 # CRISPR dependency analysis – ovarian cancer
@@ -278,5 +277,4 @@ print(p_combined)
 dev.off()
 
 
-#save.image("/STORAGE/csbig/jruiz/Ovary_data/5_Depmap_ovary/5_3_HM_DepMap.RData")
 

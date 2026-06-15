@@ -24,7 +24,7 @@ options(stringsAsFactors = FALSE)
 # 1) Load consensus genes
 # ============================================================
 
-# All names of TF in regulones
+# Names of all TFs in regulons
 Top_MR_DepMap <- readRDS("~/Ovary_signatures/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds")
 Top_MR_DepMap <- names(Top_MR_DepMap)
 length(Top_MR_DepMap) #46
@@ -87,7 +87,7 @@ cat("Matrix dims:", nrow(mat), "x", ncol(mat), "\n")
 # ============================================================
 
 # -------------------------------
-# ORDENAR MATRIZ (por dependencia media)
+# ORDER MATRIX (by mean dependency)
 # -------------------------------
 gene_means <- rowMeans(mat, na.rm = TRUE)
 mat_top <- mat[order(gene_means, decreasing = FALSE), ]
@@ -104,7 +104,7 @@ col_fun <- colorRamp2(
 )
 
 # -------------------------------
-# 🔥 FORMATO CONDICIONAL DE GENES
+# Conditional row formatting
 # -------------------------------
 genes_ordered <- rownames(mat_top)
 
@@ -116,7 +116,7 @@ row_names_gp <- gpar(
 )
 
 # -------------------------------
-# HEATMAP (TODOS LOS GENES)
+# HEATMAP (ALL GENES)
 # -------------------------------
 ht <- Heatmap(
   mat_top,

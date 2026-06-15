@@ -13,7 +13,7 @@
 #   5. Post-processing: classify regulators, export tables, generate figures
 #
 # Input files:
-#   ../4_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds   — RRA results (GEO)
+#   ../2_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds   — RRA results (GEO)
 #   ../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds        — DESeq2 results (TCGA vs AE)
 #   ../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds    — DESeq2 results (TCGA vs GTEx)
 #   ov_tcga_vst.tsv                                 — TCGA VST expression matrix
@@ -145,11 +145,11 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
     library(ggrepel)
   })
 
-  # Armar tablas limpias
+  # Build clean tables
   rra <- make_rra_signed_z(geo_rra_all, eps = eps)
   de  <- make_de_stat(de_tbl)
 
-  # Merge por gen
+  # Merge by gene
   df <- inner_join(rra, de, by = "gene") %>%
     mutate(
       direction = factor(direction, levels = c("down", "up")),
@@ -171,7 +171,7 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
 
   rho_top <- spearman_rho(df_top$score_rra, df_top$stat)
 
-  # ----------- Etiquetas: top 10 genes extremos por lado (en df_top) -----------
+  # ----------- Labels: top 10 extreme genes per side (in df_top) -----------
   label_up <- df_top %>%
     filter(direction == "up") %>%
     arrange(desc(abs(score_rra))) %>%
@@ -210,7 +210,7 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
       axis.text  = element_text(size = 7)
     )
 
-  # Panel robusto (principal): signed -log10(p_adj) vs stat + etiquetas
+  # Main panel (robust): signed -log10(p_adj) vs stat + labels
   p_robust <- ggplot(df_top, aes(x = x_logp_signed, y = stat, color = direction)) +
     geom_point(alpha = 0.35, size = 1.2) +
     scale_color_manual(values = dir_cols, drop = FALSE) +
@@ -242,7 +242,7 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
       legend.title = element_blank()
     )
 
-  # Figura combinada: robusto + inset global
+  # Combined figure: main robust panel + global inset
   p_combined <- p_robust +
     inset_element(
       p_global,
@@ -356,7 +356,7 @@ make_signature_from_core <- function(core_sel,
 # across sources before input to msVIPER.
 make_signature_from_deseq <- function(de_tbl,
                                        score_col       = "stat",
-                                       gene_col        = "Symbol_autho",
+                                       gene_col        = "Symbol",
                                        transform       = c("none", "zscore"),
                                        dedup           = c("abs_max", "mean"),
                                        sort_decreasing = TRUE) {
@@ -482,6 +482,7 @@ eset <- eset_tbl %>%
 # Network parameters: 300 bootstraps, MI p-value threshold = 1e-8
 network_file <- "cancer_ovary_network_300bt_p1e-8.txt"
 regulon <- aracne2regulon(network_file, eset)
+saveRDS(regulon, "cancer_ovary_regulon_300bt_p1e-8.rds")
 
 
 # =============================================================================

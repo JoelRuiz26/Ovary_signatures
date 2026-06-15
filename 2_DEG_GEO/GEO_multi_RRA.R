@@ -1,20 +1,8 @@
-# radian
-
-#setwd("/STORAGE/csbig/hachepunto/adenosina/Ovary_signatures/2_DEG_GEO")
 setwd("~/Ovary_signatures/2_DEG_GEO")
 
 ## ============================================================
-## Paquetes necesarios
+## Required packages
 ## ============================================================
-
-# if (!requireNamespace("GEOquery", quietly = TRUE)) {
-#   BiocManager::install("GEOquery")
-# }
-# if (!requireNamespace("limma", quietly = TRUE)) {
-#   BiocManager::install("limma")
-# }
-
-# install.packages("RobustRankAggreg")
 
 library(GEOquery)
 library(limma)
@@ -27,8 +15,8 @@ library(dplyr)
 ## ============================================================
 ## 1) Descargar datos GEO: lista de ExpressionSet
 ## ============================================================
-# gse_ids: vector de IDs, e.g. c("GSE14407","GSE18520",...)
-# destdir: carpeta donde se guardan los archivos de GEO
+# gse_ids: vector of IDs, e.g. c("GSE14407","GSE18520",...)
+# destdir: folder where GEO files are stored
 download_gse_series <- function(gse_ids,
                                 destdir  = "geo_data",
                                 platform = "GPL570",
@@ -41,7 +29,7 @@ download_gse_series <- function(gse_ids,
   for (gse in gse_ids) {
     message("\n=== Procesando ", gse, " ===")
     
-    # Ruta esperada del series_matrix (lo que ya viste con dir())
+    # Expected path of the series_matrix file
     sm_file <- file.path(destdir, paste0(gse, "_series_matrix.txt.gz"))
     
     attempt <- 1
@@ -62,7 +50,7 @@ download_gse_series <- function(gse_ids,
         error = function(e) {
           warning("   ERROR al obtener ", gse, " (intento ", attempt, "): ",
                   conditionMessage(e))
-          # Si hay un series_matrix potencialmente corrupto, lo borramos
+          # Delete potentially corrupt series_matrix file
           if (file.exists(sm_file)) {
             message("   Borrando posible archivo parcial: ", sm_file)
             try(unlink(sm_file), silent = TRUE)
@@ -76,7 +64,7 @@ download_gse_series <- function(gse_ids,
         next
       }
       
-      ## Selección de plataforma
+      ## Platform selection
       
       if (methods::is(eset_obj, "ExpressionSet")) {
         # Solo un ExpressionSet
@@ -131,11 +119,10 @@ download_gse_series <- function(gse_ids,
 }
 
 ## ============================================================
-## 2) Explorar “condiciones” en phenoData
-##    (algo tipo inspect_gse_labels)
+## 2) Explore “conditions” in phenoData
 ## ============================================================
-# eset_list: lista nombrada de ExpressionSet (salida de download_gse_series)
-# max_levels: máximo de niveles distintos para considerar una columna "tipo condición"
+# eset_list: named list of ExpressionSet objects (output of download_gse_series)
+# max_levels: maximum number of distinct levels to consider a column a “condition” type
 inspect_gse_conditions <- function(eset_list, max_levels = 12) {
   stopifnot(is.list(eset_list))
   
@@ -151,9 +138,9 @@ inspect_gse_conditions <- function(eset_list, max_levels = 12) {
     message("Columnas en phenoData:")
     print(colnames(pheno))
     
-    # columnas candidatas a "condición"
+    # candidate columns for "condition"
     cand_cols <- colnames(pheno)[vapply(pheno, function(x) {
-      # tratamos como factor informativo
+      # treat as informative factor
       ux <- unique(as.character(x))
       n_ux <- length(ux)
       n_ux > 1 && n_ux <= max_levels
@@ -169,14 +156,14 @@ inspect_gse_conditions <- function(eset_list, max_levels = 12) {
     message("\nColumnas candidatas a 'condición' (≤ ", max_levels, " niveles):")
     print(cand_cols)
     
-    # tablas de frecuencia por columna candidata
+    # frequency tables per candidate column
     cond_summary <- lapply(cand_cols, function(col) {
       tbl <- table(pheno[[col]], useNA = "ifany")
       sort(tbl, decreasing = TRUE)
     })
     names(cond_summary) <- cand_cols
     
-    # output legible
+    # readable output
     for (col in cand_cols) {
       cat("\n---", gse, "::", col, "---\n")
       print(cond_summary[[col]])
@@ -189,7 +176,7 @@ inspect_gse_conditions <- function(eset_list, max_levels = 12) {
 }
 
 ## ============================================================
-## 3) Valida la lista de condiciones
+## 3) Validate condition specifications
 ## ============================================================
 
 check_contrast_specs <- function(esets, contrast_specs) {
@@ -208,7 +195,7 @@ check_contrast_specs <- function(esets, contrast_specs) {
     
     pd <- Biobase::pData(eset)
     
-    # 1) Checar columna
+    # 1) Check column
     if (!cs$group_col %in% colnames(pd)) {
       warning("  -> Columna '", cs$group_col, "' NO existe en pData(", gse, ")")
       next
@@ -216,7 +203,7 @@ check_contrast_specs <- function(esets, contrast_specs) {
     
     groups <- pd[[cs$group_col]]
     
-    # 2) Tabla de niveles crudos
+    # 2) Table of raw levels
     tbl <- table(groups, useNA = "ifany")
     message("  Niveles encontrados:")
     print(tbl)
@@ -225,11 +212,11 @@ check_contrast_specs <- function(esets, contrast_specs) {
     case_spec      <- cs$case
     
     # ---------------------------------------------------
-    # 3) Construir máscaras de control y caso
+    # 3) Build control and case masks
     # ---------------------------------------------------
     control_mask <- rep(FALSE, length(groups))
-    
-    # 3a) Controles explícitos (no-NA)
+
+    # 3a) Explicit controls (non-NA)
     non_na_ctrl <- control_levels[!is.na(control_levels)]
     if (length(non_na_ctrl) > 0) {
       missing_ctrl <- setdiff(non_na_ctrl, names(tbl))
@@ -240,19 +227,19 @@ check_contrast_specs <- function(esets, contrast_specs) {
       control_mask <- control_mask | (!is.na(groups) & groups %in% non_na_ctrl)
     }
     
-    # 3b) Controles marcados como NA en pData
+    # 3b) Controls marked as NA in pData
     if (any(is.na(control_levels))) {
       control_mask <- control_mask | is.na(groups)
     }
     
-    # 3c) Casos
+    # 3c) Cases
     if (identical(case_spec, "leftover")) {
-      # todo lo que NO sea control es caso
+      # everything not assigned as control is a case
       case_mask <- !control_mask
-      
-      # Para reporte: niveles usados como caso (ignorando NA)
+
+      # For reporting: levels used as case (ignoring NA)
       case_levels_report <- setdiff(names(tbl), non_na_ctrl)
-      # si non_na_ctrl está vacío y control es solo NA, sacamos todos menos "<NA>"
+      # if non_na_ctrl is empty and control is only NA, take all except "<NA>"
       if (any(is.na(control_levels))) {
         case_levels_report <- setdiff(names(tbl), NA_character_)
       }
@@ -272,7 +259,7 @@ check_contrast_specs <- function(esets, contrast_specs) {
     n_case    <- sum(case_mask)
     
     # ---------------------------------------------------
-    # 4) Mensajes legibles
+    # 4) Readable messages
     # ---------------------------------------------------
     message("  -> Control levels declarados: ",
             paste(ifelse(is.na(control_levels), "NA", control_levels),
@@ -290,7 +277,7 @@ check_contrast_specs <- function(esets, contrast_specs) {
     message("     n_case    = ", n_case, "\n")
     
     # ---------------------------------------------------
-    # 5) Guardar diagnóstico
+    # 5) Save diagnostics
     # ---------------------------------------------------
     out[[gse]] <- list(
       found_levels   = tbl,
@@ -306,10 +293,10 @@ check_contrast_specs <- function(esets, contrast_specs) {
 
 
 ## ============================================================
-## 4) Expresión diferencial con limma para cada dataset
+## 4) Differential expression with limma for each dataset
 ## ============================================================
-# eset_list: lista de ExpressionSet
-# contrast_specs: lista nombrada por GSE, por ejemplo:
+# eset_list: list of ExpressionSet objects
+# contrast_specs: named list per GSE, for example:
 #   list(
 #     GSE14407 = list(
 #       group_col = "source_name_ch1",
@@ -323,9 +310,9 @@ check_contrast_specs <- function(esets, contrast_specs) {
 #     )
 #   )
 #
-# gene_annot_cols: columnas de fData(eset) que quieres pegar a la tabla de DE.
-#                  típicamente c("ID","Gene.symbol","Gene.title")
-# log2_auto: si TRUE, intenta decidir si hay que hacer log2.
+# gene_annot_cols: columns from fData(eset) to join to the DE table.
+#                  typically c("ID","Gene.symbol","Gene.title")
+# log2_auto: if TRUE, tries to determine whether log2 transformation is needed.
 limma_de_all <- function(eset_list,
                          contrast_specs,
                          gene_annot_cols = c("ID", "Gene.symbol", "Gene.title"),
@@ -357,7 +344,7 @@ limma_de_all <- function(eset_list,
     pheno <- Biobase::pData(eset)
     
     # =========================
-    # 3.1 Armar vector grupo
+    # 3.1 Build group vector
     # =========================
     if (!spec$group_col %in% colnames(pheno)) {
       warning("   Columna '", spec$group_col, "' no está en phenoData de ",
@@ -369,23 +356,23 @@ limma_de_all <- function(eset_list,
     message("   Resumen de '", spec$group_col, "' en ", gse, ":")
     print(table(col_vals, useNA = "ifany"))
     
-    # NUEVA LÓGICA leftover consistente con check_contrast_specs
+    # Leftover logic consistent with check_contrast_specs
     if (length(spec$case) == 1L &&
         spec$case[1] %in% c("leftover", "others", "not_control")) {
-      
-      message("   Usando modo 'case = leftover': todo lo que NO es control se trata como caso.")
-      
+
+      message("   Using 'case = leftover' mode: everything not assigned as control is a case.")
+
       ctrl_vals     <- spec$control
       non_na_ctrl   <- ctrl_vals[!is.na(ctrl_vals)]
       control_mask  <- rep(FALSE, length(col_vals))
-      
-      # 1) controles explícitos (no NA)
+
+      # 1) explicit controls (non-NA)
       if (length(non_na_ctrl) > 0) {
         control_mask <- control_mask |
           (!is.na(col_vals) & col_vals %in% non_na_ctrl)
       }
-      
-      # 2) controles definidos por NA en pData
+
+      # 2) controls defined as NA in pData
       if (any(is.na(ctrl_vals))) {
         control_mask <- control_mask | is.na(col_vals)
       }
@@ -393,7 +380,7 @@ limma_de_all <- function(eset_list,
       group <- ifelse(control_mask, "control", "case")
       
     } else {
-      # Modo estándar: case/control explícitos por etiqueta
+      # Standard mode: explicit case/control labels
       col_chr <- as.character(col_vals)
       group <- ifelse(col_chr %in% spec$case, "case",
                ifelse(col_chr %in% spec$control, "control", NA))
@@ -418,7 +405,7 @@ limma_de_all <- function(eset_list,
     }
     
     # =========================
-    # 3.2 Log2 auto (simple)
+    # 3.2 Automatic log2 detection
     # =========================
     if (log2_auto) {
       rng <- range(expr, na.rm = TRUE)
@@ -431,7 +418,7 @@ limma_de_all <- function(eset_list,
     }
     
     # =========================
-    # 3.3 Diseño y limma
+    # 3.3 Design matrix and limma fit
     # =========================
     design <- model.matrix(~ group)  # intercepto + efecto case vs control
     fit    <- limma::lmFit(expr, design)
@@ -444,7 +431,7 @@ limma_de_all <- function(eset_list,
                           sort.by       = "P")
     
     # =========================
-    # 3.4 Añadir anotaciones de probe
+    # 3.4 Add probe annotations
     # =========================
     fdat <- Biobase::fData(eset)
     common_probes <- intersect(rownames(tt), rownames(fdat))
@@ -466,7 +453,7 @@ limma_de_all <- function(eset_list,
 }
 
 ## ============================================================
-## 5) Anotar
+## 5) Annotate
 ## ============================================================
 add_gene_symbol_with_gconvert_safe <- function(de_list,
                                                id_col   = "ID",
@@ -495,7 +482,7 @@ add_gene_symbol_with_gconvert_safe <- function(de_list,
       rownames(tt)
     }
     
-    # gconvert devuelve una fila por query (con NA en 'name' si no hay mapping)
+    # gconvert returns one row per query (NA in 'name' if no mapping)
     gc <- gprofiler2::gconvert(
       query      = ids,
       organism   = organism,
@@ -503,16 +490,16 @@ add_gene_symbol_with_gconvert_safe <- function(de_list,
       mthreshold = 1,
       filter_na  = FALSE
     )
-    
-    # Buscar la columna de índice del query y la de símbolo
-    idx_col  <- colnames(gc)[1]          # suele ser "query_number" o similar
-    sym_col  <- "name"                   # columna estándar con símbolo / nombre
-    
-    # Reordenar por índice del query (1..n), como haces tú
+
+    # Identify the query index column and the symbol column
+    idx_col  <- colnames(gc)[1]          # usually "query_number" or similar
+    sym_col  <- "name"                   # standard column with symbol / name
+
+    # Reorder by query index (1..n)
     gc[[idx_col]] <- as.integer(gc[[idx_col]])
     gc <- gc[order(gc[[idx_col]]), , drop = FALSE]
-    
-    # Vector de símbolos alineado a 'ids' por posición
+
+    # Symbol vector aligned to 'ids' by position
     gene_symbol <- gc[[sym_col]]
     
     if (length(gene_symbol) != nrow(tt)) {
@@ -570,7 +557,7 @@ add_gene_symbol_with_gconvert <- function(de_list,
       next
     }
     
-    # 2) Partir en chunks para no castigar la API de g:Profiler
+    # 2) Split into chunks to avoid overloading the g:Profiler API
     idx <- seq_along(unique_ids)
     split_ids <- split(unique_ids, ceiling(idx / chunk_size))
     
@@ -593,7 +580,7 @@ add_gene_symbol_with_gconvert <- function(de_list,
       next
     }
     
-    # 3) Esperamos columnas 'input' (ID original) y 'name' (símbolo)
+    # 3) Expect columns 'input' (original ID) and 'name' (symbol)
     if (!all(c("input", "name") %in% colnames(conv))) {
       warning("  -> La salida de gconvert no tiene columnas 'input' y 'name' en ", nm,
               ". Revisa versión de gprofiler2.")
@@ -602,12 +589,12 @@ add_gene_symbol_with_gconvert <- function(de_list,
     }
     
     conv <- conv[!is.na(conv$input) & !is.na(conv$name), , drop = FALSE]
-    conv <- conv[!duplicated(conv$input), , drop = FALSE]  # un símbolo por input
+    conv <- conv[!duplicated(conv$input), , drop = FALSE]  # one symbol per input
     
     sym_map <- conv$name
     names(sym_map) <- conv$input  # input = ID de probe
     
-    # 4) Mapear de vuelta al orden de tt
+    # 4) Map back to the order of tt
     ids_for_tt <- if (id_col %in% colnames(tt)) {
       as.character(tt[[id_col]])
     } else {
@@ -662,7 +649,7 @@ add_gene_symbol_from_fdata <- function(de_list,
       next
     }
     
-    # Buscar columna candidata de símbolo
+    # Find candidate symbol column
     cand <- symbol_candidates[symbol_candidates %in% colnames(fdat)]
     if (length(cand) == 0L) {
       warning("  -> No encontré ninguna columna de símbolo en fData de ", nm,
@@ -675,10 +662,10 @@ add_gene_symbol_from_fdata <- function(de_list,
     sym_col <- cand[1]
     message("  -> Usando columna de símbolo '", sym_col, "' de fData.")
     
-    # Extraer mapa de símbolo
+    # Extract symbol map
     sym_map <- fdat[, sym_col, drop = TRUE]
     
-    # Alinear con probes de la tabla limma
+    # Align with probes in the limma table
     common_probes <- intersect(rownames(tt), names(sym_map))
     if (length(common_probes) == 0L) {
       warning("  -> No hubo intersección entre rownames(tt) y rownames(fData) en ", nm)
@@ -686,7 +673,7 @@ add_gene_symbol_from_fdata <- function(de_list,
       next
     }
     
-    # Crear vector de símbolos alineado al orden de tt
+    # Create symbol vector aligned to the order of tt
     gene_sym <- rep(NA_character_, nrow(tt))
     names(gene_sym) <- rownames(tt)
     gene_sym[common_probes] <- sym_map[common_probes]
@@ -700,7 +687,7 @@ add_gene_symbol_from_fdata <- function(de_list,
 }
 
 ## ============================================================
-## 6) Colapso de genesymbol por B
+## 6) Collapse by gene symbol using B statistic
 ## ============================================================
 
 collapse_limma_table <- function(tt,
@@ -716,33 +703,33 @@ collapse_limma_table <- function(tt,
   
   df <- tt
   
-  # Opcional: separar símbolos múltiples "A /// B /// C"
+  # Optional: split multiple symbols "A /// B /// C"
   if (split_multi) {
-    # Requiere tidyr/dplyr; si no quieres tidyverse, me dices y lo hacemos en base
+    # Requires tidyr/dplyr; can be reimplemented in base R if needed
     df <- tidyr::separate_rows(df,
                                !!rlang::sym(symbol_col),
                                sep = multi_sep)
   }
   
-  # Normalizar símbolo como character
+  # Normalise symbol as character
   df[[symbol_col]] <- as.character(df[[symbol_col]])
   
   if (!keep_na_sym) {
     df <- df[!is.na(df[[symbol_col]]) & df[[symbol_col]] != "", , drop = FALSE]
   }
   
-  # Si después de filtrar ya no queda nada, regresamos data.frame vacío
+  # If no rows remain after filtering, return an empty data.frame
   if (nrow(df) == 0L) {
     warning("collapse_limma_table: no quedaron filas con símbolo de gen válido.")
     return(df)
   }
   
-  # Colapsar por símbolo tomando el renglón con mayor B
-  # (si empatan B, se queda uno arbitrario de los empatados)
+  # Collapse by symbol, keeping the row with the highest B statistic
+  # (ties are broken arbitrarily)
   o <- order(df[[symbol_col]], -df[["B"]])
   df_sorted <- df[o, , drop = FALSE]
   
-  # Nos quedamos con la primera ocurrencia de cada símbolo (el de mayor B)
+  # Keep the first occurrence of each symbol (highest B)
   keep_idx <- !duplicated(df_sorted[[symbol_col]])
   df_collapsed <- df_sorted[keep_idx, , drop = FALSE]
   
@@ -780,7 +767,7 @@ collapse_limma_list <- function(de_list,
 
 
 ## ============================================================
-## 8) Robust Rank Aggreg
+## 8) Robust Rank Aggregation
 ## ============================================================
 
 make_rank_lists <- function(de_list,
@@ -797,7 +784,7 @@ make_rank_lists <- function(de_list,
     df <- de_list[[nm]]
     if (is.null(df) || nrow(df) == 0L) next
 
-    # símbolos válidos
+    # valid symbols
     if (!("Gene.symbol" %in% colnames(df))) {
       warning("En ", nm, " falta Gene.symbol. Omito.")
       next
@@ -805,7 +792,7 @@ make_rank_lists <- function(de_list,
     df <- df[!is.na(df$Gene.symbol) & df$Gene.symbol != "", , drop = FALSE]
     if (nrow(df) == 0L) next
 
-    # dirección por logFC (solo para separar up/down)
+    # direction by logFC (used only to separate up/down)
     if (!lfc_col %in% colnames(df)) {
       warning("En ", nm, " falta ", lfc_col, ". Omito.")
       next
@@ -817,12 +804,12 @@ make_rank_lists <- function(de_list,
     }
     if (nrow(df) == 0L) next
 
-    # ranking continuo
+    # continuous ranking
     if (!is.null(stat_col) && stat_col %in% colnames(df)) {
-      # más grande = más evidencia
+      # higher value = stronger evidence
       df <- df[order(-df[[stat_col]]), , drop = FALSE]
     } else {
-      # fallback: p primero, luego |logFC|
+      # fallback: rank by p first, then |logFC|
       if (!p_col %in% colnames(df)) {
         warning("En ", nm, " falta ", p_col, " y no diste stat_col. Omito.")
         next
@@ -843,7 +830,7 @@ make_rank_lists <- function(de_list,
 
 
 ## ============================================================
-## Ejecusión
+## Execution
 ## ============================================================
 # 1) IDs de los datasets del paper de ovario
 gse_ids <- c("GSE14407", "GSE18520", "GSE27651",
@@ -856,10 +843,10 @@ esets <- download_gse_series(
   retries  = 2
 )
 
-# 2) Inspeccionar phenoData para decidir columnas/labels:
+# 2) Inspect phenoData to decide columns/labels:
 cond_info <- inspect_gse_conditions(esets, max_levels = 12)
 
-# 3) Definir contrast_specs a mano según lo que veas en cond_info:
+# 3) Define contrast_specs manually based on cond_info output:
 
 contrast_specs <- list(
   GSE14407 = list(
@@ -897,13 +884,13 @@ contrast_specs <- list(
   )
 )
 
-# 4) Checa contrast_specs:
+# 4) Check contrast_specs:
 diagnostics <- check_contrast_specs(esets, contrast_specs)
 
-# 5) Correr limma en todos:
+# 5) Run limma on all datasets:
 de_results <- limma_de_all(esets, contrast_specs)
 
-# 6) Añadir columna Gene.symbol usando gconvert
+# 6) Add Gene.symbol column using gconvert
 de_results_sym <- add_gene_symbol_with_gconvert_safe(
   de_list = de_results,
   id_col  = "ID",
@@ -911,22 +898,22 @@ de_results_sym <- add_gene_symbol_with_gconvert_safe(
 )
 
 
-# 7) Colapsar por símbolo con la función que ya definimos antes
+# 7) Collapse by symbol using the function defined above
 de_genes <- collapse_limma_list(
   de_list     = de_results_sym,
   symbol_col  = "Gene.symbol",
   keep_na_sym = FALSE,
   split_multi = FALSE
 )
-# Ejemplo: ver cabecera de un dataset
+# Example: inspect a dataset's header
 head(de_genes$GSE27651)
 saveRDS(de_genes, "DEGs_alldsets_GEO.rds")
 
-# 8) Ordenar listas para RRA
+# 8) Sort lists for RRA
 rank_lists_up <- make_rank_lists(de_genes, direction="up",   p_col="adj.P.Val")
 rank_lists_dn <- make_rank_lists(de_genes, direction="down", p_col="adj.P.Val")
 
-# 9) correr RRA
+# 9) Run RRA
 # UP-regulated meta-set
 rra_up <- RobustRankAggreg::aggregateRanks(
   glist = rank_lists_up,
@@ -973,7 +960,7 @@ adjust_rra_no_filter <- function(rra_tbl, method = "BH") {
 library(dplyr)
 
 # =========================
-# 1) UP/DOWN ajustados
+# 1) Adjusted UP/DOWN
 # =========================
 up <- adjust_rra_no_filter(rra_up, method = "BH") %>%
   transmute(
@@ -990,14 +977,13 @@ down <- adjust_rra_no_filter(rra_down, method = "BH") %>%
   )
 
 # =========================
-# 2) m = universo completo (sin colapsar)
-#    (esto es lo que te faltaba)
+# 2) m = full universe (without collapsing)
 # =========================
 m <- full_join(up, down, by = "gene") %>%
   filter(!is.na(gene), nzchar(gene))
 
 # =========================
-# 3) geo_rra_1row = 1 fila por gen (elige lado por menor p_adj)
+# 3) geo_rra_1row = 1 row per gene (direction chosen by smallest p_adj)
 # =========================
 geo_rra_1row <- m %>%
   mutate(
@@ -1061,21 +1047,21 @@ rra_report_all <- geo_rra_1row %>%
     rank_by_absZ, rank_by_absZ_within_dir
   )
 
-# Descripción de las columnas de rra_report_all
-# gene: Símbolo génico (HGNC). Una fila por gen, genome-wide.
-# direction: Dirección del efecto RRA (“up” o “down”), determinada por el lado (UP/DOWN) con menor p_adj en el RRA original de GEO.
-# p_raw: Valor p crudo del RRA correspondiente a la dirección ganadora (UP o DOWN).
-# p_adj: Valor p ajustado (BH/FDR) del RRA correspondiente a la dirección ganadora. Es el p-value formal que se reportaría en una tabla clásica de RRA.
+# Column descriptions for rra_report_all
+# gene: HGNC gene symbol. One row per gene, genome-wide.
+# direction: RRA effect direction (“up” or “down”), chosen as the side (UP/DOWN) with the smallest p_adj.
+# p_raw: Raw RRA p-value for the winning direction (UP or DOWN).
+# p_adj: BH-adjusted RRA p-value for the winning direction. This is the formal p-value reported in a standard RRA table.
 
-# rank_adj: Ranking global (todas las direcciones) por p_adj ascendente. Empates se resuelven con ties.method = "average".
-# rank_raw: Ranking global por p_raw ascendente. Útil solo para inspección.
-# rank_adj_within_dir: Ranking por p_adj dentro de cada dirección (up y down por separado). Equivalente a “Top up genes” y “Top down genes” en tablas clásicas.
+# rank_adj: Global rank (all directions) by ascending p_adj. Ties resolved with ties.method = “average”.
+# rank_raw: Global rank by ascending p_raw. Useful only for inspection.
+# rank_adj_within_dir: Rank by p_adj within each direction (up and down separately). Equivalent to “Top up genes” and “Top down genes” in classic tables.
 
-# rra_z: Score continuo firmado del RRA. Magnitud = evidencia; signo = dirección.
-# abs_rra_z: Valor absoluto de rra_z. Mide fuerza de la señal RRA, independiente de la dirección.
+# rra_z: Signed continuous RRA score. Magnitude = evidence strength; sign = direction.
+# abs_rra_z: Absolute value of rra_z. Measures RRA signal strength regardless of direction.
 
-# * rank_by_absZ: Ranking global final por evidencia RRA, ordenado por abs_rra_z descendente. Este es el ranking principal genome-wide.
-# * rank_by_absZ_within_dir: Ranking por evidencia RRA dentro de cada dirección (up / down). Útil para reportar “Top upregulated” y “Top downregulated” genes.
+# * rank_by_absZ: Final global rank by RRA evidence, ordered by descending abs_rra_z. This is the primary genome-wide ranking.
+# * rank_by_absZ_within_dir: Rank by RRA evidence within each direction (up / down). Useful for reporting “Top upregulated” and “Top downregulated” genes.
 
 
 saveRDS(rra_report_all, file = "GEO_ovarian_cancer_RRA_results.rds")
@@ -1088,27 +1074,22 @@ write.table(rra_report_all,
 
 
 # =========================
-# CONTROL: Submuestreo aleatorio para descartar sesgo de tamaño
-# (respuesta al comentario de Joel)
+# CONTROL: Random subsampling to rule out sample-size bias
 # =========================
 
-# Este análisis verifica que la mejora en correlación al restringir a genes
-# con fuerte señal RRA no sea un artefacto del tamaño de muestra, sino
-# una propiedad real de los genes más reproducibles.
+# Verifies that the correlation improvement when restricting to genes with
+# strong RRA signal is not a sample-size artefact but a genuine property
+# of the most reproducible genes.
 
 library(readr)
 
-# --- Cargar estadísticos DESeq2 de TCGA (necesitas estas rutas) ---
+# --- Load DESeq2 statistics from TCGA ---
 DE_AE   <- readRDS("../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds")
 DE_GTEx <- readRDS("../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds")
 
-# DE_AE   <- readRDS("../../../../jruiz/Ovary_data/1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds")
-# DE_GTEx <- readRDS("../../../../jruiz/Ovary_data/0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds")
-
-
-# --- Deduplicar por gen (abs_max) antes del join ---
+# --- Deduplicate per gene (abs_max) before joining ---
 de_ae_uniq <- DE_AE %>%
-  select(gene = Symbol_autho, stat_ae = stat) %>%
+  select(gene = Symbol, stat_ae = stat) %>%
   mutate(gene = as.character(gene)) %>%
   filter(!is.na(gene), nzchar(gene), is.finite(stat_ae)) %>%
   group_by(gene) %>%
@@ -1116,14 +1097,14 @@ de_ae_uniq <- DE_AE %>%
   ungroup()
 
 de_gtex_uniq <- DE_GTEx %>%
-  select(gene = Symbol_autho, stat_gtex = stat) %>%
+  select(gene = Symbol, stat_gtex = stat) %>%
   mutate(gene = as.character(gene)) %>%
   filter(!is.na(gene), nzchar(gene), is.finite(stat_gtex)) %>%
   group_by(gene) %>%
   slice_max(abs(stat_gtex), n = 1, with_ties = FALSE) %>%
   ungroup()
 
-# --- Construir tabla conjunta ---
+# --- Build joint table ---
 df_full <- rra_report_all %>%
   inner_join(de_ae_uniq,   by = "gene") %>%
   inner_join(de_gtex_uniq, by = "gene") %>%
@@ -1131,14 +1112,14 @@ df_full <- rra_report_all %>%
 
 n_total <- nrow(df_full)
 
-# --- Correlación genome-wide (baseline) ---
+# --- Genome-wide correlation (baseline) ---
 rho_ae_full   <- cor(df_full$rra_z, df_full$stat_ae,   method = "spearman")
 rho_gtex_full <- cor(df_full$rra_z, df_full$stat_gtex, method = "spearman")
 message("Correlación genome-wide — AE: ", round(rho_ae_full, 3),
         " | GTEx: ", round(rho_gtex_full, 3))
 
-# --- Correlación en el subconjunto de genes con fuerte señal RRA ---
-# Usa el mismo criterio que en el manuscrito (top N por abs_rra_z)
+# --- Correlation in the subset of genes with strong RRA signal ---
+# Uses the same criterion as in the manuscript (top N by abs_rra_z)
 n_sub <- 2000  # ajusta al valor real que usaste
 df_top <- df_full %>% arrange(desc(abs_rra_z)) %>% slice_head(n = n_sub)
 
@@ -1147,7 +1128,7 @@ rho_gtex_top <- cor(df_top$rra_z, df_top$stat_gtex, method = "spearman")
 message("Correlación top-", n_sub, " RRA — AE: ", round(rho_ae_top, 3),
         " | GTEx: ", round(rho_gtex_top, 3))
 
-# --- Control de Joel: distribución nula por submuestreo aleatorio ---
+# --- Null distribution by random subsampling (robustness check) ---
 set.seed(42)
 n_perm <- 1000
 
@@ -1163,13 +1144,13 @@ null_cors <- replicate(n_perm, {
 null_ae   <- null_cors["ae",   ]
 null_gtex <- null_cors["gtex", ]
 
-# p-value empírico (proporción de nulos >= observado)
+# empirical p-value (proportion of nulls >= observed)
 p_ae   <- mean(abs(null_ae)   >= abs(rho_ae_top))
 p_gtex <- mean(abs(null_gtex) >= abs(rho_gtex_top))
 
 message("p-valor empírico (submuestreo) — AE: ", p_ae, " | GTEx: ", p_gtex)
 
-# --- Figura para suplementaria ---
+# --- Supplementary figure ---
 library(ggplot2)
 
 df_null <- data.frame(

@@ -37,7 +37,7 @@ LFC_CUTOFF <- 1
 P_ORA <- 0.05
 Q_ORA <- 0.20
 
-# semantic reduction (MISMO CRITERIO QUE TU SCRIPT)
+# semantic reduction (same criterion as in the main script)
 SIMPLIFY_CUTOFF  <- 0.3
 SIMPLIFY_BY      <- "p.adjust"
 SIMPLIFY_MEASURE <- "Wang"
@@ -137,7 +137,7 @@ perform_ora <- function(genes, universe, ontology) {
   
   if (is.null(eg) || nrow(as.data.frame(eg)) == 0) return(data.frame())
   
-  # pairwise similarity (necesario para simplify robusto)
+  # pairwise similarity (required for robust simplify)
   eg <- tryCatch({
     enrichplot::pairwise_termsim(eg, method = SIMPLIFY_MEASURE)
   }, error = function(e) eg)
@@ -212,7 +212,7 @@ plot_df <- ora_results %>%
   slice_min(order_by = p.adjust, n = TOP_N_PER_ONTOLOGY, with_ties = FALSE) %>%
   ungroup()
 
-# ordenar términos dentro de cada panel
+# order terms within each panel
 plot_df <- plot_df %>%
   group_by(Ontology) %>%
   mutate(
@@ -252,7 +252,7 @@ p_dot <- ggplot(plot_df, aes(x = GeneRatio_num, y = Description_wrapped)) +
     x = NULL,
     y = NULL
   ) +
-  theme_classic(base_size = 14) +   # 🔥 AUMENTA TODO GLOBAL
+  theme_classic(base_size = 14) +
   theme(
     plot.title   = element_text(face = "bold", hjust = 0.5, size = 18),
     

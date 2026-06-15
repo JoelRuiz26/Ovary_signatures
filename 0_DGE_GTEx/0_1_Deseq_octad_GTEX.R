@@ -11,13 +11,6 @@ out_dir <- "~/Ovary_signatures/0_DGE_GTEx"
 setwd(out_dir)
 
 h5_path <- "/STORAGE/csbig/jruiz/Octad/octad.counts.and.tpm.h5"
-#h5_path <- file.path("/STORAGE/csbig/jruiz/Octad/octad.counts.and.tpm.h5")
-#if (!file.exists(h5_path)) {
-#  url <- "https://chenlab-data-public.s3-us-west-2.amazonaws.com/octad/octad.counts.and.tpm.h5"
-#  message(">> Descargando HDF5 (~3 GB) a: ", h5_path)
-#  download.file(url, destfile = h5_path, mode = "wb", quiet = FALSE)
-#}
-#stopifnot(file.exists(h5_path))  # ensure
 
 lfc_thr  <- 1.0
 padj_thr <- 0.01
@@ -40,7 +33,6 @@ controls_all <- phenoDF %>%
   pull(sample.id)
 
 metadata <- phenoDF %>% filter(sample.id %in% c(case_ovary, controls_all))
-#saveRDS(metadata, "0_1_metadata_GTEx.rds")
 
 cat("Cases:", length(case_ovary), "| Controls:", length(controls_all), "\n")
 
@@ -50,7 +42,7 @@ res <- octad::diffExp(
   control_id        = controls_all,
   source            = "octad.whole",
   file              = h5_path,
-  normalize_samples = TRUE,   # OCTAD usa RUVg para DESeq2 cuando TRUE
+  normalize_samples = TRUE,   # OCTAD uses RUVg for DESeq2 normalization when TRUE
   k                 = 2,      # como ya lo traías
   n_topGenes        = 15000,
   DE_method         = "DESeq2",
@@ -58,7 +50,7 @@ res <- octad::diffExp(
   output            = FALSE
 )
 
-# ---- FIX: evita pvalue/padj = 0 por underflow (sin columnas *_safe) ----
+# ---- FIX: prevent pvalue/padj = 0 due to floating-point underflow ----
 eps <- .Machine$double.xmin
 
 if ("pvalue" %in% names(res)) {
@@ -70,15 +62,15 @@ if ("padj" %in% names(res)) {
   res$padj[!is.na(res$padj) & res$padj <= 0] <- eps
 }
 
-# Recalcula -log10 usando las columnas ya corregidas
+# Recompute -log10 from the corrected columns
 res$mlog10_p    <- if ("pvalue" %in% names(res)) -log10(res$pvalue) else NA_real_
 res$mlog10_padj <- if ("padj"   %in% names(res)) -log10(res$padj)   else NA_real_
 
-# Guardar resultado completo
+# Save full result
 saveRDS(res, "DE_full_OVARY_DESeq2_GTEx.rds")
 
 # ===================== BUILD SIGNATURES (ALL + SIGNIFIC) ===================== #
-# Usa Symbol si existe; si no, cae a identifier
+# Use Symbol if available, otherwise fall back to identifier
 if ("Symbol" %in% names(res)) {
   res2 <- res %>% mutate(Symbol = toupper(Symbol))
 } else {
@@ -119,7 +111,7 @@ cat("OVARY | DESeq2",
     "-> TOTAL:", nrow(sig_all), "(UP:", c_all["up"], "| DOWN:", c_all["down"], ")",
     "| SIGNIFIC:", nrow(sig_sig), "(UP:", c_sig["up"], "| DOWN:", c_sig["down"], ")\n")
 
-# ---- QC que no confunde por redondeo ----
+# ---- QC: zero-count checks not confused by rounding ----
 cat("Zeros check (should be 0): pvalue==0:", sum(res$pvalue == 0, na.rm = TRUE),
     "| padj==0:", sum(res$padj == 0, na.rm = TRUE), "\n")
 cat("Min (scientific): pvalue:", sprintf("%.3e", min(res$pvalue, na.rm = TRUE)),

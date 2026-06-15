@@ -17,7 +17,7 @@ base_dir <- "~/Ovary_signatures"
 paths <- list(
   raw  = file.path(base_dir, "0_DGE_GTEx", "DE_full_OVARY_DESeq2_GTEx.rds"),
   ae   = file.path(base_dir, "1_DGE_AE",   "DE_full_OVARY_DESeq2_AE.rds"),
-  core = "/STORAGE/csbig/jruiz/Ovary_data/3_Consensus_DGE_analysis/3_0_1_genes_concordant.tsv"
+  core = file.path(base_dir, "3_Consensus_DGE_analysis/3_1_Core_signature/3_0_1_genes_concordant.tsv")
 )
 
 out_dir <- file.path(base_dir, "3_Consensus_DGE_analysis/3_2_DGE_volcano_plots")
@@ -42,12 +42,12 @@ prep_df <- function(df) {
     if ("Symbol_autho" %in% colnames(df)) {
       df <- df %>% mutate(Symbol = as.character(Symbol_autho))
     } else {
-      stop("No encuentro Symbol ni Symbol_autho.")
+      stop("Column 'Symbol' (or 'Symbol_autho') not found.")
     }
   }
   
   padj_col <- if ("padj_safe" %in% colnames(df)) "padj_safe" else if ("padj" %in% colnames(df)) "padj" else NA
-  if (is.na(padj_col)) stop("No encuentro padj_safe ni padj.")
+  if (is.na(padj_col)) stop("Column 'padj_safe' or 'padj' not found.")
   
   df %>%
     transmute(
@@ -103,28 +103,28 @@ pick_top_labels_core <- function(df, core_tbl, top_n = 5) {
   bind_rows(top_up, top_down)
 }
 
-# ===================== RUN (SOLO GTEx + AE) ===================== #
+# ===================== RUN (GTEx + AE ONLY) ===================== #
 raw_df <- prep_df(read_rds_safe(paths$raw)) %>% mutate(dataset = "GTEx control")
 ae_df  <- prep_df(read_rds_safe(paths$ae))  %>% mutate(dataset = "AE control")
 
 all_df <- bind_rows(raw_df, ae_df) %>%
   mutate(dataset = factor(dataset, levels = c("GTEx control", "AE control")))
 
-# eje X común para ambos panels
+# shared X axis for both panels
 x_max <- max(abs(all_df$log2FoldChange), na.rm = TRUE)
-# eje X fijo para ambos panels (LFC -20 a 20)
+# fixed X axis for both panels
 x_lim <- c(-10, 10)
 
-# margen extra para labels (evita que se recorten con nudge_x)
+# extra margin for labels (prevents clipping with nudge_x)
 x_pad <- 4
 x_lim_plot <- x_lim + c(-x_pad, x_pad)
 
 # ---- core_signature (col gene) ----
-if (!file.exists(paths$core)) stop("No existe core_signature: ", paths$core)
+if (!file.exists(paths$core)) stop("core_signature file not found: ", paths$core)
 core_signature <- vroom(paths$core, show_col_types = FALSE)
 
 if (!("gene" %in% colnames(core_signature))) {
-  stop("core_signature no tiene columna 'gene'. Columnas: ", paste(colnames(core_signature), collapse = ", "))
+  stop("core_signature lacks 'gene' column. Available columns: ", paste(colnames(core_signature), collapse = ", "))
 }
 
 core_tbl <- core_signature %>%
@@ -144,7 +144,7 @@ all_df <- all_df %>%
     )
   )
 
-# ---- label df: top (core_signature) por dataset ----
+# ---- label df: top core_signature genes per dataset ----
 label_df <- all_df %>%
   group_by(dataset) %>%
   group_modify(~ pick_top_labels_core(.x, core_tbl, top_n = TOP_N)) %>%
@@ -259,4 +259,4 @@ n_panels <- length(levels(all_df$dataset))
 ggsave(out_pdf, p, width = 9.5, height = max(6, 2.3 * n_panels), units = "in", device = cairo_pdf)
 ggsave(out_png, p, width = 9.5, height = max(6, 2.3 * n_panels), units = "in", dpi = 600, device = "png", bg = "white")
 
-message("Done. Outputs en: ", out_dir)
+message("Done. Outputs in: ", out_dir)
