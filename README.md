@@ -1,4 +1,4 @@
-# Ovary Signatures — Reproducible transcriptomic analyses for a Briefings in Bioinformatics manuscript
+# Ovary Signatures — Reproducible transcriptomic analyses for a NAR Cancer & Computational Biology manuscript
 
 This repository contains the **R analysis pipeline** supporting the manuscript:
 
@@ -89,16 +89,7 @@ If you do not use `renv`, install required packages manually (see **Dependencies
 
 This project is designed to run as a sequence of modular steps (preprocessing → meta-analysis → MRA → DepMap integration).
 
-Typical execution patterns:
-- Run numbered scripts in order (e.g., `01_*.R`, `02_*.R`, …), or
-- Use an orchestrator script (e.g., `run_all.R`), or
-- Use per-module entry points.
-
-If you maintain an entry-point script, document it here, for example:
-
-```bash
-Rscript run_all.R
-```
+Run the numbered scripts in order (e.g., `01_*.R`, `02_*.R`, …), or use per-module entry points corresponding to each analytical stage described above.
 
 ---
 
@@ -180,7 +171,7 @@ Depending on the configured steps, outputs may include:
 
 If you use this code or reproduce analyses, please cite:
 
-- Ruiz et al., *Integrative Transcriptomics Addresses Control Ambiguity to Identify a Robust Ovarian Cancer Signature and Functionally Essential Driver Regulators*, **Briefings in Bioinformatics** (in preparation / submitted).
+- Ruiz et al., *Integrative Transcriptomics Addresses Control Ambiguity to Identify a Robust Ovarian Cancer Signature and Functionally Essential Driver Regulators*, **NAR Cancer & Computational Biology**, Oxford Academic (in preparation / submitted).
 
 Once the article is published, please replace this section with the final citation (authors, year, journal, volume/issue, DOI).
 
