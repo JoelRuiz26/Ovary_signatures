@@ -91,14 +91,26 @@ METADATA: dict = {
     # Format: {"name": "Apellido, Nombre", "affiliation": "...", "orcid": "0000-..."}
     # ORCID is optional but strongly recommended by NAR.
     "creators": [
-        {
-            "name": "Ruiz-Hernández, Joel",
-            "affiliation": "",
-            # "orcid": "0000-0000-0000-0000",
-        },
-        # Example — uncomment and fill in:
-        # {"name": "Pérez-Calixto, David",  "affiliation": "", "orcid": "..."},
-        # {"name": "Tovar, Hugo",            "affiliation": "", "orcid": "..."},
+        {"name": "Ruiz-Hernández, Joel",
+         "affiliation": "Programa de Maestría y Doctorado en Ciencias Bioquímicas, UNAM; Instituto Nacional de Medicina Genómica, Mexico City, Mexico",
+         "orcid": "0009-0007-8914-6100"},
+        {"name": "Pérez-Calixto, Daniel",
+         "affiliation": "Departamento de Física, Facultad de Ciencias, UNAM; Instituto Nacional de Medicina Genómica, Mexico City, Mexico",
+         "orcid": "0009-0004-3988-1260"},
+        {"name": "Pastelín-Morales, José Manuel",
+         "affiliation": "Maestría en Biotecnología, Universidad del Papaloapan, Tuxtepec, Oaxaca, Mexico",
+         "orcid": "0009-0004-9461-9898"},
+        {"name": "Hernández-Lemus, Enrique",
+         "affiliation": "Instituto Nacional de Medicina Genómica, Mexico City, Mexico",
+         "orcid": "0000-0002-1872-1397"},
+        {"name": "Vazquez-Victorio, Genaro",
+         "affiliation": "Departamento de Física, Facultad de Ciencias, UNAM; Laboratorio Nacional de Soluciones Biomiméticas, UNAM, Mexico City, Mexico"},
+        {"name": "Martínez-Ramírez, Angélica S.",
+         "affiliation": "Instituto de Biotecnología, Universidad del Papaloapan, Tuxtepec, Oaxaca, Mexico",
+         "orcid": "0000-0002-2474-4739"},
+        {"name": "Tovar, Hugo",
+         "affiliation": "Departamento de Física, Facultad de Ciencias, UNAM; Instituto Nacional de Medicina Genómica, Mexico City, Mexico",
+         "orcid": "0000-0002-8360-6133"},
     ],
     "related_identifiers": [
         {
