@@ -54,14 +54,15 @@ GITHUB_URL  = f"https://github.com/{GITHUB_REPO}"
 
 METADATA: dict = {
     "title": (
-        "Integrative Transcriptomics Addresses Control Ambiguity to Identify "
-        "a Robust Ovarian Cancer Signature and Functionally Essential Driver "
-        "Regulators: analysis code"
+        "Integrative transcriptomic and network-guided functional dependency "
+        "analysis reveals essential transcriptional drivers in ovarian "
+        "cancer: analysis code"
     ),
     "upload_type": "software",
     "description": (
-        "<p>R analysis pipeline supporting the manuscript submitted to "
-        "<em>NAR Cancer &amp; Computational Biology</em> (Oxford Academic). "
+        "<p>R analysis pipeline supporting an ovarian cancer transcriptomics "
+        "manuscript (update this line with the journal/citation once the "
+        "manuscript is accepted). "
         "The workflow integrates multi-cohort transcriptomics (GEO microarray "
         "studies and TCGA RNA-seq), network-based Master Regulator Analysis "
         "(MRA) applied to the full space of transcriptional modulators "
@@ -89,7 +90,7 @@ METADATA: dict = {
     # ── AUTHORS ───────────────────────────────────────────────────────────────
     # Add every co-author before the production run.
     # Format: {"name": "Apellido, Nombre", "affiliation": "...", "orcid": "0000-..."}
-    # ORCID is optional but strongly recommended by NAR.
+    # ORCID is optional but recommended by Zenodo for author disambiguation.
     "creators": [
         {"name": "Ruiz-Hernández, Joel",
          "affiliation": "Programa de Maestría y Doctorado en Ciencias Bioquímicas, UNAM; Instituto Nacional de Medicina Genómica, Mexico City, Mexico",
@@ -238,7 +239,7 @@ print(f"  Concept DOI : https://doi.org/{concept_doi}")
 print(f"               └─ cite this one in the paper (tracks all versions)")
 print(f"  Zenodo page : {record_url}")
 print()
-print("  NAR reference entry:")
+print("  Reference entry:")
 print(f"  {author_block} et al. ({year}) {title}.")
 print(f"  Zenodo. https://doi.org/{concept_doi}.")
 print()
@@ -251,4 +252,4 @@ print()
 print("  Next steps:")
 print("  1. Open the Zenodo page above and verify authors / metadata.")
 print("  2. Add the concept DOI to the Code Availability section.")
-print("  3. Add the reference to your NAR reference list.")
+print("  3. Add the reference to the manuscript's reference list.")

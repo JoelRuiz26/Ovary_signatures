@@ -1,4 +1,4 @@
-# Ovary Signatures — Reproducible transcriptomic analyses for a NAR Cancer & Computational Biology manuscript
+# Ovary Signatures — Reproducible transcriptomic analyses supporting an ovarian cancer manuscript
 
 This repository contains the **R analysis pipeline** supporting the manuscript:
 
@@ -171,7 +171,7 @@ Depending on the configured steps, outputs may include:
 
 If you use this code or reproduce analyses, please cite:
 
-- Ruiz et al., *Integrative Transcriptomics Addresses Control Ambiguity to Identify a Robust Ovarian Cancer Signature and Functionally Essential Driver Regulators*, **NAR Cancer & Computational Biology**, Oxford Academic (in preparation / submitted).
+- Ruiz-Hernández et al., *Integrative transcriptomic and network-guided functional dependency analysis reveals essential transcriptional drivers in ovarian cancer* (manuscript in preparation / under submission).
 
 Once the article is published, please replace this section with the final citation (authors, year, journal, volume/issue, DOI).
 
