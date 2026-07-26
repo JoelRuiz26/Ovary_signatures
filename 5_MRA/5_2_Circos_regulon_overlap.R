@@ -17,10 +17,30 @@
 #   3. Extract each driver's regulon (its ARACNe target-gene set).
 #   4. Compute pairwise overlap (shared targets + Jaccard index) between
 #      the 17 regulons.
-#   5. Draw a Circos/chord diagram: sectors = the 17 drivers, grouped into
-#      the functional modules described in the Discussion; an inner track
-#      colors each sector by NES; ribbons connect driver pairs whose
-#      regulons share target genes, width/alpha scaled by overlap size.
+#   5. Draw a Circos/CHORD diagram via circlize::chordDiagram(): sectors =
+#      the 17 drivers, grouped into the functional modules described in the
+#      Discussion and colored by module (chordDiagram's own "grid" track) +
+#      gene-symbol label. NES is still used to order drivers within a module
+#      (via core_mra.tsv) but is no longer drawn as its own color ring -- an
+#      earlier attempt at a second NES-colored band hit a circlize rendering
+#      bug where an explicit per-cell ribbon `col` matrix combined with >= 2
+#      preAllocateTracks entries causes the outer custom track to silently
+#      overwrite the grid ring underneath it (reproduced and confirmed in
+#      isolation; see the comment above `grid_col` below). Ribbons connect
+#      driver pairs whose regulons overlap (Jaccard >= MIN_JACCARD). Unlike
+#      the first version of this figure,
+#      sector width is NOT fixed/equal: chordDiagram() sizes every driver's
+#      arc proportionally to its DEGREE -- the number of other drivers it is
+#      linked to after the Jaccard filter -- so a driver tightly coupled to
+#      several others (e.g. the G2/M & mitosis hub) gets a visibly wide arc,
+#      and a peripheral driver with one or two links gets a thin arc (drivers
+#      with ZERO qualifying links get a small placeholder sector so they
+#      still appear on the map). Ribbon color still distinguishes same-module
+#      (module color) vs cross-module (grey) pairs as before; ribbon OPACITY
+#      now carries the actual Jaccard magnitude (darker/more saturated =
+#      stronger overlap), since ribbon body width is spoken for by the degree
+#      encoding. This mirrors the width(count)/opacity(magnitude) split used
+#      in the companion figure 5_3_Circos_driver_hallmark.R.
 #   6. Save the figure as PDF (vector) and PNG (300 dpi), and print
 #      diagnostic tables to the console for a sanity check.
 #
@@ -42,12 +62,14 @@
 # the console warnings before trusting the output figure.
 #
 # KNOWN OPEN QUESTIONS (flag for Joel/Daniel before treating this as final)
-#   - CHAF1B is grouped here under "Chromatin/centromere" because that is how
-#     the Discussion describes it (CAF-1 histone chaperone). The Results
-#     section instead lists CHAF1B among the "comparatively uncharacterized"
-#     drivers together with KCMF1/GMNN/WDHD1/ELOC. Pick whichever framing you
-#     want to keep and edit the `modules` list below accordingly -- it is a
-#     one-line change.
+#   - RESOLVED 2026-07-25: CHAF1B was tentatively grouped under
+#     "Chromatin/centromere" (CAF-1 histone chaperone framing, per the
+#     Discussion) in earlier drafts. Confirmed instead to belong with the
+#     "comparatively uncharacterized" drivers, alongside KCMF1/GMNN/WDHD1/ELOC
+#     (the Results-section framing) -- kept IDENTICAL to
+#     5_3_Circos_driver_hallmark.R on purpose, so both figures tell a
+#     consistent module story; if this ever needs to change again, change it
+#     in both files.
 #   - This script does NOT yet use DepMap/CRISPR dependency scores (Figure 4,
 #     from 6_Depmap_ovary/) to color or size nodes by essentiality. If Joel
 #     can share the per-gene median DepMap dependency table for the 17
@@ -58,7 +80,7 @@
 
 ## ---- 0. Setup -------------------------------------------------------------
 
-required_pkgs <- c("circlize", "dplyr", "tidyr", "readr")
+required_pkgs <- c("circlize", "dplyr", "tidyr", "readr", "png")
 missing_pkgs <- setdiff(required_pkgs, rownames(installed.packages()))
 if (length(missing_pkgs) > 0) install.packages(missing_pkgs, repos = "https://cloud.r-project.org")
 
@@ -77,8 +99,24 @@ NETWORK_FILE   <- "cancer_ovary_network_300bt_p1e-8.txt"   # Regulator / Target 
 MRA_TABLE_FILE <- "core_mra.tsv"                           # TF / NES / direction / signature_score / ...
 OUT_PREFIX     <- "5_2_1_circos_17drivers_regulon_overlap"
 
-MIN_SHARED_TARGETS <- 3     # only draw a ribbon if regulons share >= this many targets
-                             # (raise/lower to declutter or reveal more links)
+MIN_SHARED_TARGETS <- 3     # secondary floor: never draw a ribbon below this many shared
+                             # targets, regardless of Jaccard (guards against tiny regulons
+                             # producing a spuriously high Jaccard from just 1-2 shared genes)
+MIN_JACCARD <- 0.15         # PRIMARY filter: only draw a ribbon if the Jaccard index of the
+                             # two regulons is >= this. Regulon sizes span ~20x among these 17
+                             # drivers (125 targets for BIRC5 vs 2579 for KCMF1), so filtering
+                             # on raw shared-target counts lets the largest regulons (KCMF1,
+                             # SRSF2, ELOC, ACTL6A) dominate the plot with links that are large
+                             # in absolute terms but tiny relative to regulon size (e.g.
+                             # SRSF2-KCMF1: 508 shared targets but Jaccard = 0.13). Jaccard
+                             # normalizes for regulon size and highlights genuinely coordinated
+                             # pairs -- with this cutoff the top links are almost all within the
+                             # G2/M & mitosis module (PLK1-CCNA2, CDK1-CCNA2, PLK1-CDK1, ...),
+                             # which matches the manuscript's Discussion narrative much better
+                             # than the previous count-based threshold (which passed 134/136
+                             # possible pairs -- essentially everything).
+                             # (raise/lower to declutter or reveal more links; try 0.20 for an
+                             # even sparser plot, ~19 links)
 
 ## ---- 2. The 17 prioritized drivers, grouped into functional modules -------
 # (as described in Results 5.3 / Discussion of the manuscript)
@@ -86,13 +124,13 @@ MIN_SHARED_TARGETS <- 3     # only draw a ribbon if regulons share >= this many 
 modules <- list(
   "G2/M & mitosis"           = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2"),
   "DNA-damage checkpoint"    = c("CHEK1", "TIMELESS"),
-  "Chromatin / centromere"   = c("ACTL6A", "CENPA", "CHAF1B"),
+  "Chromatin / centromere"   = c("ACTL6A", "CENPA"),
   "RNA processing"           = c("SRSF2"),
   "Survival / apoptosis"     = c("BIRC5", "HMGB3"),
-  "Underexplored"            = c("KCMF1", "GMNN", "WDHD1", "ELOC")
+  "Underexplored"            = c("KCMF1", "GMNN", "WDHD1", "ELOC", "CHAF1B")
 )
 
-driver_module <- stack(modules) |>
+driver_module <- as_tibble(stack(modules)) |>
   rename(gene = values, module = ind) |>
   mutate(gene = as.character(gene), module = as.character(module))
 
@@ -171,69 +209,158 @@ overlap_df <- overlap_df %>% arrange(desc(shared))
 cat("\n=== Top 15 driver pairs by shared regulon targets ===\n")
 print(head(overlap_df, 15))
 
-links <- overlap_df %>% filter(shared >= MIN_SHARED_TARGETS)
+links <- overlap_df %>% filter(jaccard >= MIN_JACCARD, shared >= MIN_SHARED_TARGETS)
 
-cat("\n", nrow(links), " links pass the MIN_SHARED_TARGETS = ", MIN_SHARED_TARGETS,
-    " threshold (out of ", nrow(overlap_df), " possible pairs).\n", sep = "")
+cat("\n", nrow(links), " links pass the MIN_JACCARD = ", MIN_JACCARD,
+    " (and MIN_SHARED_TARGETS = ", MIN_SHARED_TARGETS, ") threshold(s) (out of ",
+    nrow(overlap_df), " possible pairs).\n", sep = "")
 
 if (nrow(links) == 0) {
-  warning("No pairs pass the overlap threshold -- lower MIN_SHARED_TARGETS, ",
+  warning("No pairs pass the overlap threshold -- lower MIN_JACCARD / MIN_SHARED_TARGETS, ",
           "or double check that the network file / gene symbols match.")
 }
 
-## ---- 6. Build the Circos plot ---------------------------------------------
+## ---- 6. Build the CHORD diagram (sector width = degree) -------------------
 
 sector_order <- driver_info$gene
 sector_module <- setNames(driver_info$module, driver_info$gene)
-sector_nes    <- setNames(driver_info$NES, driver_info$gene)
+n_sectors     <- length(sector_order)
 
-# color scale for NES within the activated range seen in this analysis
-nes_col_fun <- colorRamp2(
-  c(min(sector_nes, na.rm = TRUE), max(sector_nes, na.rm = TRUE)),
-  c("#FEE0D2", "#A50F15")   # light -> dark red (all 17 are "Activated")
-)
+# Square adjacency matrix, same 17 names on rows and columns -- chordDiagram()
+# merges same-named rows/cols into a single sector per driver, with sector
+# size = sum of that driver's row+column values. Only the upper triangle is
+# filled (each unordered pair appears once in `links`), value = 1 per edge so
+# sector width is a pure DEGREE count, not weighted by Jaccard magnitude.
+value_mat <- matrix(0, nrow = n_sectors, ncol = n_sectors,
+                     dimnames = list(sector_order, sector_order))
+for (i in seq_len(nrow(links))) {
+  value_mat[links$from[i], links$to[i]] <- 1
+}
+
+degree <- rowSums(value_mat) + colSums(value_mat)
+cat("\n=== Driver degree (number of Jaccard-qualifying partners) ===\n")
+print(sort(degree, decreasing = TRUE))
+
+# chordDiagram() silently DROPS any sector whose total row+col value is 0 --
+# a driver with no Jaccard-qualifying partner at this threshold would simply
+# vanish from the figure instead of appearing as a (thin) unconnected sector.
+# Give each zero-degree driver a tiny self-value on the matrix diagonal to
+# keep its sector alive at a minimal width; keep.diagonal = FALSE (below,
+# where chordDiagram() is called) means this self-value never draws a
+# visible self-loop ribbon -- it only keeps the sector on the map.
+zero_degree_drivers <- names(degree)[degree == 0]
+if (length(zero_degree_drivers) > 0) {
+  cat("\nNOTE: these drivers have ZERO Jaccard-qualifying partners at MIN_JACCARD = ",
+      MIN_JACCARD, " and will be drawn as a minimal placeholder sector (no ribbons): ",
+      paste(zero_degree_drivers, collapse = ", "), "\n", sep = "")
+  for (g in zero_degree_drivers) value_mat[g, g] <- 0.3
+}
+
+# Per-cell ribbon color: same-module pairs get their module color, cross-
+# module pairs get grey (as before); opacity within each group scales with
+# Jaccard strength (darker/more saturated = stronger overlap) since ribbon
+# body width is now spoken for by the degree encoding above.
+max_jaccard <- max(links$jaccard)
+col_mat <- matrix("#00000000", nrow = n_sectors, ncol = n_sectors,
+                   dimnames = dimnames(value_mat))
+for (i in seq_len(nrow(links))) {
+  strength <- links$jaccard[i] / max_jaccard
+  same_module <- sector_module[links$from[i]] == sector_module[links$to[i]]
+  col_mat[links$from[i], links$to[i]] <- if (same_module) {
+    add_transparency(module_colors[sector_module[links$from[i]]], 0.75 - 0.40 * strength)
+  } else {
+    add_transparency("grey40", 0.90 - 0.15 * strength)
+  }
+}
+
+# chordDiagram()'s own "grid" annotation track carries the module color
+# directly (the sector's "identity" color, matching the legend). An earlier
+# version of this script tried to free up the grid ring for NES and draw
+# module color as a second custom band instead, but that combination --
+# an explicit per-cell `col` matrix together with >= 2 preAllocateTracks
+# entries -- triggers what looks like a circlize rendering bug: the second
+# custom track's fill silently overwrites/swallows the grid ring underneath
+# it (verified in isolation: identical code with either the `col` matrix
+# removed, or down to a single preAllocateTracks entry, renders correctly).
+# Simplest robust fix -- and the same pattern already used successfully in
+# 5_3_Circos_driver_hallmark.R -- is a single preAllocateTracks entry (the
+# label) and no separate NES ring.
+grid_col <- module_colors[sector_module[sector_order]]
+names(grid_col) <- sector_order
 
 draw_circos <- function() {
+  # Allow gene-label text to spill past the device's default plotting region
+  # instead of being clipped at the canvas edge (same fix as before). Canvas
+  # widened beyond the default c(-1,1) for the same reason.
+  old_par <- par(xpd = NA, mar = c(1, 1, 1, 1))
+  on.exit(par(old_par), add = TRUE)
+
   circos.clear()
-  circos.par(gap.after = c(rep(2, length(sector_order) - 1), 8),
-             start.degree = 90, track.margin = c(0.01, 0.01))
+  circos.par(start.degree = 90, canvas.xlim = c(-1.3, 1.3), canvas.ylim = c(-1.3, 1.3))
 
-  circos.initialize(factors = sector_order, xlim = c(0, 1))
+  chordDiagram(
+    value_mat,
+    grid.col          = grid_col,
+    col               = col_mat,
+    order             = sector_order,
+    directional       = 0,
+    small.gap         = 2,
+    annotationTrack   = "grid",     # module-colored band, see grid_col above
+    annotationTrackHeight = 0.09,
+    keep.diagonal     = FALSE,      # don't draw the placeholder self-loops
+                                    # added above for zero-degree drivers
+    preAllocateTracks = list(track.height = 0.10),   # reserved for the label
+                                                      # track below (single
+                                                      # entry -- see the note
+                                                      # on grid_col above for
+                                                      # why not two)
+    link.sort         = TRUE,
+    link.largest.ontop = TRUE
+  )
 
-  # Track 1 (outer): functional module color band + gene label
-  circos.trackPlotRegion(factors = sector_order, ylim = c(0, 1), track.height = 0.08,
-    panel.fun = function(x, y) {
-      sector <- get.cell.meta.data("sector.index")
-      circos.rect(0, 0, 1, 1, col = module_colors[sector_module[sector]], border = NA)
-      circos.text(0.5, 1.8, sector, facing = "clockwise", niceFacing = TRUE,
-                   cex = 0.75, font = 2)
-    })
+  # Gene-symbol label (outermost, i.e. track.index = 2)
+  circos.trackPlotRegion(track.index = 2, bg.border = NA, panel.fun = function(x, y) {
+    sector <- get.cell.meta.data("sector.index")
+    xcenter <- get.cell.meta.data("xcenter")
+    circos.text(xcenter, 0.5, sector, facing = "clockwise", niceFacing = TRUE,
+                 cex = 0.75, font = 2)
+  })
 
-  # Track 2: NES bar (activation strength)
-  circos.trackPlotRegion(factors = sector_order, ylim = c(0, 1), track.height = 0.08,
-    panel.fun = function(x, y) {
-      sector <- get.cell.meta.data("sector.index")
-      circos.rect(0, 0, 1, 1, col = nes_col_fun(sector_nes[sector]), border = "white")
-    })
+  # Explicit (x, y) instead of "bottomleft"/"bottomright": those keywords
+  # anchor to the padded canvas corner (canvas.ylim[1] = -1.3), well below
+  # where the circle's own labels actually end (~ -0.8), leaving a dead gap
+  # (same fix as in 5_3_Circos_driver_hallmark.R; see crop_png_whitespace()
+  # below for the outer-margin side of the same problem).
+  legend(x = -1.25, y = -0.85, legend = names(module_colors), fill = module_colors,
+         bty = "n", cex = 0.65, ncol = 2, title = "Functional module")
+  legend(x = 0.55, y = -0.85,
+         legend = c("weaker", "", "stronger"),
+         fill   = add_transparency("#1B9E77", c(0.75, 0.55, 0.35)),
+         title  = "Regulon overlap\n(ribbon opacity ~ Jaccard)",
+         bty = "n", cex = 0.6)
+}
 
-  # Links: ribbons for regulon overlap, colored by module of origin,
-  # cross-module links drawn thinner/greyer to keep the plot readable
-  for (i in seq_len(nrow(links))) {
-    same_module <- sector_module[links$from[i]] == sector_module[links$to[i]]
-    col <- if (same_module) {
-      add_transparency(module_colors[sector_module[links$from[i]]], 0.55)
-    } else {
-      add_transparency("grey40", 0.85)
-    }
-    lwd <- 0.5 + 2 * (links$shared[i] / max(links$shared))
-    circos.link(links$from[i], 0.5, links$to[i], 0.5, col = col, lwd = lwd)
+# Auto-crop the rendered PNG down to its actual content bounding box (plus a
+# small pad) -- the programmatic version of a manual Photoshop crop. Reads
+# the PNG back in, finds rows/cols that aren't (near-)white, and rewrites
+# the file cropped to that box. Same helper as in 5_3_Circos_driver_hallmark.R.
+crop_png_whitespace <- function(path, pad_px = 15, bg_threshold = 0.98) {
+  img <- png::readPNG(path)
+  rgb <- img[, , 1:3, drop = FALSE]
+  is_bg <- (rgb[, , 1] > bg_threshold) & (rgb[, , 2] > bg_threshold) & (rgb[, , 3] > bg_threshold)
+  is_content <- !is_bg
+  rows <- which(apply(is_content, 1, any))
+  cols <- which(apply(is_content, 2, any))
+  if (length(rows) == 0 || length(cols) == 0) {
+    warning("crop_png_whitespace(): no non-background content detected in ", path,
+            " -- leaving the file unmodified.")
+    return(invisible(NULL))
   }
-
-  legend("bottomleft", legend = names(module_colors), fill = module_colors,
-         bty = "n", cex = 0.65, title = "Functional module")
-  legend("bottomright", legend = c("weaker", "", "stronger"),
-         title = "Regulon overlap", bty = "n", cex = 0.65,
-         lty = 1, lwd = c(0.5, 1.5, 2.5), col = "grey40")
+  r0 <- max(1, min(rows) - pad_px);          r1 <- min(dim(img)[1], max(rows) + pad_px)
+  c0 <- max(1, min(cols) - pad_px);          c1 <- min(dim(img)[2], max(cols) + pad_px)
+  png::writePNG(img[r0:r1, c0:c1, , drop = FALSE], path)
+  cat("Cropped ", path, ": ", dim(img)[2], "x", dim(img)[1], " -> ",
+      c1 - c0 + 1, "x", r1 - r0 + 1, " px\n", sep = "")
 }
 
 pdf(paste0(OUT_PREFIX, ".pdf"), width = 7, height = 7)
@@ -243,6 +370,12 @@ dev.off()
 png(paste0(OUT_PREFIX, ".png"), width = 7, height = 7, units = "in", res = 300)
 draw_circos()
 dev.off()
+
+crop_png_whitespace(paste0(OUT_PREFIX, ".png"))
+# NB: the PDF is left uncropped -- it's a vector file, so trimming its page
+# box is a trivial, lossless operation in Illustrator/Acrobat/Inkscape if
+# needed, and doing it here would require an external tool (e.g. pdfcrop)
+# this repo doesn't otherwise depend on.
 
 cat("\nSaved: ", OUT_PREFIX, ".pdf and .png\n", sep = "")
 cat("Review the console tables above before dropping this into the manuscript ",

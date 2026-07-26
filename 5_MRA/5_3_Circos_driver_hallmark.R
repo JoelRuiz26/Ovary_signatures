@@ -83,16 +83,15 @@
 # Needs: circlize, dplyr, tidyr, readr, clusterProfiler, msigdbr
 # (auto-installed if missing).
 #
-# KNOWN OPEN QUESTION (carried over from 5_2_Circos_regulon_overlap.R --
-# flag for Joel/Daniel before treating either figure as final)
-#   - CHAF1B is grouped here under "Chromatin/centromere" because that is how
-#     the Discussion describes it (CAF-1 histone chaperone). The Results
-#     section instead lists CHAF1B among the "comparatively uncharacterized"
-#     drivers together with KCMF1/GMNN/WDHD1/ELOC. Pick whichever framing you
-#     want to keep and edit the `modules` list below accordingly -- it is a
-#     one-line change (kept IDENTICAL to 5_2_Circos_regulon_overlap.R here on
-#     purpose, so both figures tell a consistent module story; if you change
-#     it, change it in both files).
+# RESOLVED OPEN QUESTION (was: carried over from 5_2_Circos_regulon_overlap.R)
+#   - CHAF1B was tentatively grouped under "Chromatin/centromere" (CAF-1
+#     histone chaperone framing, per the Discussion) in earlier drafts of
+#     this figure. Confirmed 2026-07-25: CHAF1B belongs with the
+#     "comparatively uncharacterized" drivers instead, alongside
+#     KCMF1/GMNN/WDHD1/ELOC (the Results-section framing). Kept IDENTICAL to
+#     5_2_Circos_regulon_overlap.R on purpose, so both figures tell a
+#     consistent module story -- if this ever needs to change again, change
+#     it in both files.
 # =============================================================================
 
 ## ---- 0. Setup -------------------------------------------------------------
@@ -146,15 +145,16 @@ MIN_DRIVERS_PER_TERM <- 1   # SECONDARY declutter knob (applied after the
 
 ## ---- 2. The 17 prioritized drivers, grouped into functional modules -------
 # (as described in Results 5.3 / Discussion of the manuscript; IDENTICAL to
-# 5_2_Circos_regulon_overlap.R -- see the open question in the header above)
+# 5_2_Circos_regulon_overlap.R -- see the resolved open question in the
+# header above)
 
 modules <- list(
   "G2/M & mitosis"           = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2"),
   "DNA-damage checkpoint"    = c("CHEK1", "TIMELESS"),
-  "Chromatin / centromere"   = c("ACTL6A", "CENPA", "CHAF1B"),
+  "Chromatin / centromere"   = c("ACTL6A", "CENPA"),
   "RNA processing"           = c("SRSF2"),
   "Survival / apoptosis"     = c("BIRC5", "HMGB3"),
-  "Underexplored"            = c("KCMF1", "GMNN", "WDHD1", "ELOC")
+  "Underexplored"            = c("KCMF1", "GMNN", "WDHD1", "ELOC", "CHAF1B")
 )
 
 driver_module <- as_tibble(stack(modules)) |>
