@@ -20,8 +20,7 @@
 #   cancer_ovary_network_300bt_p1e-8.txt            — ARACNe-AP network
 #
 # Output files:
-#   RRA_vs_AEDE_stat_combined.png
-#   RRA_vs_GTExDE_stat_combined.png
+#   Figure_S1.pdf (panel A: RRA vs AE-DE, panel B: RRA vs GTEx-DE)
 #   core_mra.tsv
 #   top_15n15_mrs.tsv
 #   MRA_signature_vs_absNES_sizeFDR.png / .pdf
@@ -277,9 +276,6 @@ res_ae_stat <- compare_rra_vs_deseq2stat(
   top_n       = 2000
 )
 
-ggsave("RRA_vs_AEDE_stat_combined.png", res_ae_stat$plot_combined,
-       width = 10, height = 8, dpi = 300)
-
 res_gtex_stat <- compare_rra_vs_deseq2stat(
   de_tbl      = DE_full_OVARY_GTEX,
   geo_rra_all = geo_rra_1row,
@@ -287,8 +283,15 @@ res_gtex_stat <- compare_rra_vs_deseq2stat(
   top_n       = 2000
 )
 
-ggsave("RRA_vs_GTExDE_stat_combined.png", res_gtex_stat$plot_combined,
-       width = 10, height = 8, dpi = 300)
+# Figure S1: panel A = RRA vs AE-DE, panel B = RRA vs GTEx-DE
+# wrap_elements() flattens each combined (main + inset) figure into a single
+# opaque block, so plot_annotation only tags the two top-level panels (A, B)
+# and not the insets nested inside them.
+fig_s1 <- wrap_elements(res_ae_stat$plot_combined) +
+  wrap_elements(res_gtex_stat$plot_combined) +
+  plot_annotation(tag_levels = "A")
+
+ggsave("Figure_S1.pdf", fig_s1, width = 20, height = 8, dpi = 300)
 
 # Reported correlations
 # AE:   rho(global ranks) = 0.133 (N = 14508) | rho(top robust) = 0.588 (N = 2000)
