@@ -441,17 +441,37 @@ draw_circos <- function() {
 
   # Custom label track (placed in the track pre-allocated above, just outside
   # the colored grid band): driver gene symbol, or the Hallmark term label
-  # with the "HALLMARK_" prefix stripped.
+  # with the "HALLMARK_" prefix stripped. Both use facing = "clockwise"
+  # (rigid radial "spoke") uniformly.
+  #
+  # We tried making driver labels bend along their arc instead (parallel to
+  # the circumference, like a road sign following a curve), which reads
+  # nicely for the wide sectors (PLK1, CDK1, CCNA2, AURKB, BIRC5...) but a
+  # sector's width here is proportional to GeneRatio (see section 7), so it
+  # ranges all the way down to ~4.5 degrees (CHAF1B) -- too narrow to bend
+  # even a 6-letter symbol without colliding into the neighboring label,
+  # confirmed with both a per-sector width/length threshold (inconsistent:
+  # some drivers bent, some didn't) and by drawing the label at a much
+  # bigger radius (per circlize's own source, the angle a bent character
+  # needs is asin(character_width / radius), so a bigger radius should ask
+  # for less angular room) -- even at an impractically tall label track
+  # (0.45, dwarfing the diagram itself) the narrowest sectors still
+  # collided, while the wide ones got needlessly tiny. Given 17 drivers
+  # whose sector widths span roughly a 3x range, there's no single radius or
+  # font size where bending fits all of them and still reads well, so every
+  # driver uses the same rigid radial style as the Hallmark terms instead --
+  # less visually novel, but consistent and legible regardless of sector
+  # width.
   circos.trackPlotRegion(track.index = 2, bg.border = NA, panel.fun = function(x, y) {
     sector <- get.cell.meta.data("sector.index")
     xcenter <- get.cell.meta.data("xcenter")
     if (sector %in% driver_sector_order) {
-      lab <- sector; cex_lab <- 0.75
+      circos.text(xcenter, 0.5, sector, facing = "clockwise", niceFacing = TRUE,
+                   cex = 0.75, font = 2)
     } else {
-      lab <- term_label_lookup[sector]; cex_lab <- 0.5
+      circos.text(xcenter, 0.5, term_label_lookup[sector], facing = "clockwise", niceFacing = TRUE,
+                   cex = 0.5, font = 2)
     }
-    circos.text(xcenter, 0.5, lab, facing = "clockwise", niceFacing = TRUE,
-                 cex = cex_lab, font = 2)
   })
 
   # Explicit (x, y) instead of "bottomleft"/"bottomright": those keywords
