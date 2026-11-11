@@ -1,3 +1,4 @@
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 ### Identify regulons candidates for survival analysis
 ### a) Filter by elbow method 
 ### b) Identify the proportion of core genes present in Regulons (get ranket list of regulons)
@@ -14,12 +15,13 @@ library(ggplot2)
 # ------------------------------------------------------------
 
 full_genes <- vroom(
-  "~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv") %>% filter(n_sources==3)
+  paste0(BASE, "/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv")) %>%
+  filter(n_sources == 3, n_up == 3 | n_down == 3)  # unanimous direction in all three sources (593 genes)
 # TF list
 TF_list <- vroom(
-  "~/Ovary_signatures/5_MRA/core_mra.tsv",show_col_types=FALSE)
+  paste0(BASE, "/5_MRA/core_mra.tsv"),show_col_types=FALSE)
 
-anot_genes <- readRDS("~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_2_gene_annotation_UNION_universe.rds")
+# anot_genes (gene annotation universe) is only used in commented-out code below
 
 # core genes
 core_list <- full_genes %>%
@@ -82,7 +84,7 @@ tf_names <- df %>%
   dplyr::select(TF, NES, direction) %>% as.data.frame()
 
 
-saveRDS(tf_names,"~/Ovary_signatures/5_MRA/5_0_1_Top_elbow_regulones.rds")
+saveRDS(tf_names,paste0(BASE, "/5_MRA/5_0_1_Top_elbow_regulones.rds"))
 
 
 tf_names <- tf_names%>%
@@ -102,7 +104,7 @@ length(tf_names) #328
 # Plot elbow
 # ------------------------------------------------------------
 
-outdir <- file.path("~/Ovary_signatures/5_MRA/")
+outdir <- file.path(paste0(BASE, "/5_MRA/"))
 
 
 ggsave(file.path(outdir, "5_0_Elbow_plot_regulons.pdf"),
@@ -117,11 +119,11 @@ ggsave(file.path(outdir, "5_0_Elbow_plot_regulons.png"),
 # b) Core genes in regulons
 # ------------------------------------------------------------
 
-Master_Regulator <- readRDS("~/Ovary_signatures/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
+Master_Regulator <- readRDS(paste0(BASE, "/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds"))
 
 # Filter regulons
 regulons_filtered <- Master_Regulator[names(Master_Regulator) %in% tf_names]
-saveRDS(regulons_filtered,"~/Ovary_signatures/5_MRA/5_0_Top_elbow_regulones.rds")
+saveRDS(regulons_filtered,paste0(BASE, "/5_MRA/5_0_Top_elbow_regulones.rds"))
 
 
 # Extract all genes from regulons_filtered
@@ -131,7 +133,7 @@ regulon_genes <- unique(unlist(lapply(regulons_filtered, function(x) {
 
 # Save gene pool
 saveRDS(regulon_genes,
-        "~/Ovary_signatures/5_MRA/5_1_regulon_genes_pool.rds")
+        paste0(BASE, "/5_MRA/5_1_regulon_genes_pool.rds"))
 
 
 # Filter core_genes against that gene pool
@@ -140,6 +142,6 @@ core_genes_filtered <- full_genes %>%
 
 # Save filtered core genes
 saveRDS(core_genes_filtered,
-        "~/Ovary_signatures/5_MRA/5_2_core_genes_filtered.rds")
+        paste0(BASE, "/5_MRA/5_2_core_genes_filtered.rds"))
 
 

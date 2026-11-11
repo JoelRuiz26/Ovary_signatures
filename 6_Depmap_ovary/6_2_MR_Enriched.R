@@ -1,4 +1,6 @@
 #!/usr/bin/env Rscript
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
+invisible(Sys.setlocale("LC_CTYPE", "C.UTF-8"))  # render Unicode minus signs correctly
 
 # ============================================================
 # OBJECTIVE: Identify master regulators enriched in highly
@@ -21,22 +23,22 @@ options(stringsAsFactors = FALSE)
 # 1) Load data
 # ============================================================
 ### Get universe of all regulons ###
-names_all_regulones <- vroom("~/Ovary_signatures/5_MRA/core_mra.tsv")
+names_all_regulones <- vroom(paste0(BASE, "/5_MRA/core_mra.tsv"))
 names_all_regulones <- names_all_regulones %>% filter(padj_emp <= 0.05) #1174
 
-all_regulones <- readRDS("~/Ovary_signatures/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
+all_regulones <- readRDS(paste0(BASE, "/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds"))
 regulons_filtered <- all_regulones[names(all_regulones) %in% names_all_regulones$TF]
 length(names(regulons_filtered)) #[1] 1174
-#saveRDS(names(regulons_filtered), file = "~/Ovary_signatures/6_Depmap_ovary/6_2_regulons_all.rds")
+#saveRDS(names(regulons_filtered), file = paste0(BASE, "/6_Depmap_ovary/6_2_regulons_all.rds"))
 
 
 ## Get top regulons (from NES elbow analysis) ##
-regulons <- readRDS("~/Ovary_signatures/5_MRA/5_0_Top_elbow_regulones.rds")
+regulons <- readRDS(paste0(BASE, "/5_MRA/5_0_Top_elbow_regulones.rds"))
 regulons_names <- names(regulons) #328
-#saveRDS(regulons_names, file = "~/Ovary_signatures/6_Depmap_ovary/6_2_regulons_names_topNES.rds")
+#saveRDS(regulons_names, file = paste0(BASE, "/6_Depmap_ovary/6_2_regulons_names_topNES.rds"))
 
 # Load DEG-dependency table
-df <- vroom("~/Ovary_signatures/6_Depmap_ovary/6_1_0_Dependency_DEG_core.tsv",
+df <- vroom(paste0(BASE, "/6_Depmap_ovary/6_1_0_Dependency_DEG_core.tsv"),
             show_col_types = FALSE)
 
 # ============================================================
@@ -121,7 +123,7 @@ length(results_sig$regulon) # 46 with -1 and 0.01 most extrinsec
 # Identify TFs that are also differentially expressed
 TF_DGE_DepMap <- results_sig %>% filter(regulon %in% df$gene) %>% pull(regulon)
 length(TF_DGE_DepMap) #23
-saveRDS(TF_DGE_DepMap, file = "~/Ovary_signatures/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds")
+saveRDS(TF_DGE_DepMap, file = paste0(BASE, "/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds"))
 
 # ============================================================
 # 7) Prepare data for plotting
@@ -208,7 +210,7 @@ regulons_sig_filtered <- regulons_sig_filtered[
 
 saveRDS(
   regulons_sig_filtered,
-  file = "~/Ovary_signatures/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds")
+  file = paste0(BASE, "/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds"))
 
 
 
@@ -216,7 +218,7 @@ saveRDS(
 # 9) Save figure (high resolution, vertical layout)
 # ============================================================
 
-out_path <- "~/Ovary_signatures/6_Depmap_ovary/6_2_1_Enriched_TF_Depndency"
+out_path <- paste0(BASE, "/6_Depmap_ovary/6_2_1_Enriched_TF_Depndency")
 
 ggsave(paste0(out_path, ".pdf"), p,
        width = 6, height = 10, units = "in")

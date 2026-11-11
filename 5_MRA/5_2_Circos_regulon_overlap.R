@@ -49,8 +49,8 @@
 #   core_mra.tsv                          — MRA results table (from 5_0_ovary_mra.R)
 #
 # Output files (written to this folder, 5_MRA/):
-#   5_2_1_circos_17drivers_regulon_overlap.pdf
-#   5_2_1_circos_17drivers_regulon_overlap.png
+#   5_2_1_circos_drivers_regulon_overlap.pdf
+#   5_2_1_circos_drivers_regulon_overlap.png
 #
 # Run with the working directory set to 5_MRA/, e.g.:
 #   setwd("~/Ovary_signatures/5_MRA"); source("5_2_Circos_regulon_overlap.R")
@@ -97,7 +97,7 @@ suppressPackageStartupMessages({
 
 NETWORK_FILE   <- "cancer_ovary_network_300bt_p1e-8.txt"   # Regulator / Target / MI / pvalue
 MRA_TABLE_FILE <- "core_mra.tsv"                           # TF / NES / direction / signature_score / ...
-OUT_PREFIX     <- "5_2_1_circos_17drivers_regulon_overlap"
+OUT_PREFIX     <- "5_2_1_circos_drivers_regulon_overlap"
 
 MIN_SHARED_TARGETS <- 3     # secondary floor: never draw a ribbon below this many shared
                              # targets, regardless of Jaccard (guards against tiny regulons
@@ -122,11 +122,10 @@ MIN_JACCARD <- 0.15         # PRIMARY filter: only draw a ribbon if the Jaccard 
 # (as described in Results 5.3 / Discussion of the manuscript)
 
 modules <- list(
-  "G2/M & mitosis"           = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2"),
+  "G2/M & mitosis"           = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1"),
   "DNA-damage checkpoint"    = c("CHEK1", "TIMELESS"),
   "Chromatin / centromere"   = c("ACTL6A", "CENPA"),
-  "RNA processing"           = c("SRSF2"),
-  "Survival / apoptosis"     = c("BIRC5", "HMGB3"),
+  "Survival / apoptosis"     = c("BIRC5"),
   "Underexplored"            = c("KCMF1", "GMNN", "WDHD1", "ELOC", "CHAF1B")
 )
 
@@ -135,13 +134,12 @@ driver_module <- as_tibble(stack(modules)) |>
   mutate(gene = as.character(gene), module = as.character(module))
 
 drivers <- driver_module$gene
-stopifnot(length(drivers) == 17, length(unique(drivers)) == 17)
+stopifnot(length(drivers) == 16, length(unique(drivers)) == 16)
 
 module_colors <- c(
   "G2/M & mitosis"         = "#1B9E77",
   "DNA-damage checkpoint"  = "#D95F02",
   "Chromatin / centromere" = "#7570B3",
-  "RNA processing"         = "#E7298A",
   "Survival / apoptosis"   = "#66A61E",
   "Underexplored"          = "#999999"
 )

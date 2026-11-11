@@ -1,4 +1,6 @@
 #!/usr/bin/env Rscript
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
+invisible(Sys.setlocale("LC_CTYPE", "C.UTF-8"))  # render Unicode minus signs correctly
 
 # ============================================================
 # CRISPR dependency analysis – ovarian cancer
@@ -8,7 +10,6 @@
 suppressPackageStartupMessages({
   library(vroom)
   library(dplyr)
-  library(depmap)
   library(tidyr)
   library(ComplexHeatmap)
   library(circlize)
@@ -25,12 +26,12 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 
 # Names of all TFs in regulons
-Top_MR_DepMap <- readRDS("~/Ovary_signatures/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds")
+Top_MR_DepMap <- readRDS(paste0(BASE, "/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds"))
 Top_MR_DepMap <- names(Top_MR_DepMap)
 length(Top_MR_DepMap) #46
 
 
-MR_DGE <- readRDS(file = "~/Ovary_signatures/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds")
+MR_DGE <- readRDS(file = paste0(BASE, "/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds"))
 length(MR_DGE) #23
 # 
 MR_DGE <- toupper(MR_DGE)
@@ -38,22 +39,25 @@ MR_DGE <- toupper(MR_DGE)
 # ============================================================
 # 2) DepMap CRISPR ovarian cell lines
 # ============================================================
-meta <- depmap_metadata()
+# DepMap release 24Q4 (CRISPRGeneEffect.csv = Chronos gene effect; Model.csv), downloaded from
+# depmap.org. The Bioconductor 'depmap' package used previously ships release 22Q2.
+DEPMAP_DIR <- Sys.getenv("DEPMAP_DIR", paste0(BASE, "/data/depmap_24Q4"))
+models <- vroom(file.path(DEPMAP_DIR, "Model.csv"), show_col_types = FALSE)
+ovary_lines <- models %>%
+  filter(OncotreePrimaryDisease == "Ovarian Epithelial Tumor") %>%
+  dplyr::select(depmap_id = ModelID, cell_line = StrippedCellLineName)
 
-ovary_lines <- meta %>%
-  filter(lineage == "ovary") %>%
-  filter(primary_disease== "Ovarian Cancer") %>% 
-  pull(depmap_id)
-
-crispr_ovary_all <- depmap_crispr() %>%
-  filter(depmap_id %in% ovary_lines) %>%
+gene_effect <- vroom(file.path(DEPMAP_DIR, "CRISPRGeneEffect.csv"), show_col_types = FALSE)
+names(gene_effect)[1] <- "depmap_id"
+crispr_ovary_all <- gene_effect %>%
+  inner_join(ovary_lines, by = "depmap_id") %>%
+  pivot_longer(-c(depmap_id, cell_line), names_to = "gene_name", values_to = "dependency") %>%
   mutate(
+    gene_name = sub(" \\(\\d+\\)$", "", gene_name),
     gene_u = toupper(gene_name),
-    dep_raw = dependency
-  )%>%
-  group_by(cell_line) %>%
-  mutate(dep_scaled_m11 = dep_raw) %>%
-  ungroup()
+    dep_raw = dependency,
+    dep_scaled_m11 = dep_raw
+  )
 
 cat("Rows OVARY:", nrow(crispr_ovary_all), "\n")
 cat("Cell lines:", n_distinct(crispr_ovary_all$cell_line), "\n")
@@ -147,10 +151,10 @@ draw(ht, heatmap_legend_side = "right")
 # Save
 # ============================================================
 
-pdf("~/Ovary_signatures/6_Depmap_ovary/6_3_1_Heatmap_TF.pdf", 8.5, 8.5)
+pdf(paste0(BASE, "/6_Depmap_ovary/6_3_1_Heatmap_TF.pdf"), 8.5, 8.5)
 grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
 
-png("~/Ovary_signatures/6_Depmap_ovary/6_3_1_Heatmap_TF.png",
+png(paste0(BASE, "/6_Depmap_ovary/6_3_1_Heatmap_TF.png"),
     width=8.5, height=8.5, units="in", res=600)
 grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
 

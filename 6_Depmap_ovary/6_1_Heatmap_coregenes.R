@@ -1,4 +1,6 @@
 #!/usr/bin/env Rscript
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
+invisible(Sys.setlocale("LC_CTYPE", "C.UTF-8"))  # render Unicode minus signs correctly
 
 # ============================================================
 # CRISPR dependency analysis – ovarian cancer
@@ -7,7 +9,6 @@
 suppressPackageStartupMessages({
   library(vroom)
   library(dplyr)
-  library(depmap)
   library(tidyr)
   library(ComplexHeatmap)
   library(circlize)
@@ -25,8 +26,8 @@ options(stringsAsFactors = FALSE)
 # Paths
 # ============================================================
 
-DGE_PATH <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv"
-OUT_DIR  <- "~/Ovary_signatures/6_Depmap_ovary/"
+DGE_PATH <- paste0(BASE, "/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv")
+OUT_DIR  <- paste0(BASE, "/6_Depmap_ovary/")
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 
 # ============================================================
@@ -36,31 +37,32 @@ if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 DGE_list_shared <- vroom(DGE_PATH, show_col_types = FALSE)
 
 cons_genes <- DGE_list_shared %>%
-  filter(n_sources == 3,
-         !is.na(consensus_direction),
-         consensus_direction != "none") %>%
+  filter(n_sources == 3, n_up == 3 | n_down == 3) %>%  # unanimous direction in all three sources (593 genes)
   transmute(gene_u = toupper(gene)) %>%
   distinct()
 
 # ============================================================
 # 2) Load DepMap CRISPR ovarian cell lines
 # ============================================================
-meta <- depmap_metadata()
+# DepMap release 24Q4 (CRISPRGeneEffect.csv = Chronos gene effect; Model.csv), downloaded from
+# depmap.org. The Bioconductor 'depmap' package used previously ships release 22Q2.
+DEPMAP_DIR <- Sys.getenv("DEPMAP_DIR", paste0(BASE, "/data/depmap_24Q4"))
+models <- vroom(file.path(DEPMAP_DIR, "Model.csv"), show_col_types = FALSE)
+ovary_lines <- models %>%
+  filter(OncotreePrimaryDisease == "Ovarian Epithelial Tumor") %>%
+  dplyr::select(depmap_id = ModelID, cell_line = StrippedCellLineName)
 
-ovary_lines <- meta %>%
-  filter(lineage == "ovary") %>%
-  filter(primary_disease== "Ovarian Cancer") %>% 
-  pull(depmap_id)
-
-crispr_ovary_all <- depmap_crispr() %>%
-  filter(depmap_id %in% ovary_lines) %>%
+gene_effect <- vroom(file.path(DEPMAP_DIR, "CRISPRGeneEffect.csv"), show_col_types = FALSE)
+names(gene_effect)[1] <- "depmap_id"
+crispr_ovary_all <- gene_effect %>%
+  inner_join(ovary_lines, by = "depmap_id") %>%
+  pivot_longer(-c(depmap_id, cell_line), names_to = "gene_name", values_to = "dependency") %>%
   mutate(
+    gene_name = sub(" \\(\\d+\\)$", "", gene_name),
     gene_u = toupper(gene_name),
-    dep_raw = dependency
-  )%>%
-  group_by(cell_line) %>%
-  mutate(dep_scaled_m11 = dep_raw) %>%
-  ungroup()
+    dep_raw = dependency,
+    dep_scaled_m11 = dep_raw
+  )
 
 cat("Rows OVARY:", nrow(crispr_ovary_all), "\n")
 cat("Cell lines:", n_distinct(crispr_ovary_all$cell_line), "\n")
@@ -150,7 +152,7 @@ df_all_summary <- as.data.frame(mat) %>%
     n_obs     = sum(!is.na(dep)),
     .groups   = "drop"
   ) %>%
-  arrange(mean_dep) %>%
+  arrange(median_dep) %>%
   mutate(rank = row_number())
 
 df_crisp_deg <- df_all_summary %>% left_join(DGE_list_shared , by = "gene") %>% 
@@ -167,26 +169,26 @@ zoom_data <- df_all_summary %>% filter(rank <= TOP_N)
 pal_rank_color <- scale_color_gradientn(
   colours = c("#B40426", "#FFDD57", "#2166AC"),
   values = scales::rescale(c(
-    min(df_all_summary$mean_dep, na.rm = TRUE),
+    min(df_all_summary$median_dep, na.rm = TRUE),
     0,
-    max(df_all_summary$mean_dep, na.rm = TRUE)
+    max(df_all_summary$median_dep, na.rm = TRUE)
   )),
-  name = "Mean dep. score"
+  name = "Median dep. score"
 )
 
 pal_rank_fill <- scale_fill_gradientn(
   colours = c("#B40426", "#FFDD57", "#2166AC"),
   values = scales::rescale(c(
-    min(df_all_summary$mean_dep, na.rm = TRUE),
+    min(df_all_summary$median_dep, na.rm = TRUE),
     0,
-    max(df_all_summary$mean_dep, na.rm = TRUE)
+    max(df_all_summary$median_dep, na.rm = TRUE)
   )),
-  name = "Mean dep. score"
+  name = "Median dep. score"
 )
 
 # Main plot
-p_main <- ggplot(df_all_summary, aes(rank, mean_dep, color = mean_dep)) +
-  geom_ribbon(aes(ymin = mean_dep - sd_dep, ymax = mean_dep + sd_dep, fill = mean_dep),
+p_main <- ggplot(df_all_summary, aes(rank, median_dep, color = median_dep)) +
+  geom_ribbon(aes(ymin = median_dep - sd_dep, ymax = median_dep + sd_dep, fill = median_dep),
               alpha = 0.18, color = NA) +
   pal_rank_fill +
   geom_line(linewidth = 0.35, alpha = 0.45, color = "grey50") +
@@ -204,7 +206,7 @@ p_main <- ggplot(df_all_summary, aes(rank, mean_dep, color = mean_dep)) +
   ) +
   labs(
     x = "Gene rank",
-    y = "Mean dependency score across ovarian cancer cell lines"
+    y = "Median dependency score across ovarian cancer cell lines"
   ) +
   theme_minimal(base_size = 12) +
   theme(
@@ -218,9 +220,9 @@ p_main <- ggplot(df_all_summary, aes(rank, mean_dep, color = mean_dep)) +
   guides(fill = "none")
 
 # Zoom plot
-p_zoom <- ggplot(zoom_data, aes(rank, mean_dep, color = mean_dep)) +
+p_zoom <- ggplot(zoom_data, aes(rank, median_dep, color = median_dep)) +
   geom_point(size = 2.5, alpha = 0.9) +
-  geom_errorbar(aes(ymin = mean_dep - sd_dep, ymax = mean_dep + sd_dep),
+  geom_errorbar(aes(ymin = median_dep - sd_dep, ymax = median_dep + sd_dep),
                 width = 0.2, linewidth = 0.4, alpha = 0.7) +
   geom_label_repel(
     aes(label = gene),
@@ -263,7 +265,7 @@ p_combined
 # Save combined plot (correct way)
 # ============================================================
 
-Cairo::CairoPDF(
+cairo_pdf(
   file = paste0(OUT_DIR, "6_1_2_RankedProfile_allgenes.pdf"),
   width = 8, height = 8.5
 )

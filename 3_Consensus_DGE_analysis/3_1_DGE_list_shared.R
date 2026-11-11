@@ -1,4 +1,5 @@
 #!/usr/bin/env Rscript
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 
 suppressPackageStartupMessages({
   library(dplyr)
@@ -21,7 +22,7 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 
 # ===================== CONFIG ===================== #
-base_dir <- "~/Ovary_signatures"
+base_dir <- BASE
 
 paths <- list(
   raw_deseq2 = file.path(base_dir, "0_DGE_GTEx",         "DE_full_OVARY_DESeq2_GTEx.rds"),
@@ -142,7 +143,13 @@ all_genes_tbl <- votes %>%
   arrange(desc(n_sources), gene)
 
 ###Annote list ###
-annot_universe <- readRDS("~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_2_gene_annotation_UNION_universe.rds")
+annot_file <- paste0(BASE, "/3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_2_gene_annotation_UNION_universe.rds")
+if (file.exists(annot_file)) {
+  annot_universe <- readRDS(annot_file)
+} else {
+  message("Annotation universe not found (", annot_file, "); ensembl column left as NA")
+  annot_universe <- tibble::tibble(gene = character(), ensembl = character())
+}
 
 all_genes_tbl <- all_genes_tbl %>%
   left_join(dplyr::select(annot_universe, gene, ensembl), by = "gene") %>%
