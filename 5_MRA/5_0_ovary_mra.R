@@ -21,6 +21,8 @@
 #
 # Output files:
 #   Figure_S1.pdf (panel A: RRA vs AE-DE, panel B: RRA vs GTEx-DE)
+#   Figure_S2.pdf (concordance as a function of subset size)
+#   S1_S2_concordance.tsv (correlations reported in the text)
 #   core_mra.tsv
 #   top_15n15_mrs.tsv
 #   MRA_signature_vs_absNES_sizeFDR.png / .pdf
@@ -126,9 +128,10 @@ spearman_rho <- function(x, y) {
 # 1.2 Main comparison function: RRA vs DESeq2 stat
 # -----------------------------------------------------------------------------
 
-# Computes global rank correlation and robust subset correlation between
-# the RRA signed Z-score and the DESeq2 Wald statistic. Returns merged
-# data and combined figure (robust scatter + global rank-rank inset).
+# Computes the genome-wide and top-subset Spearman correlation between the
+# RRA signed Z-score and the DESeq2 Wald statistic (both signed). The subset
+# is the top_n genes ranked by |RRA Z|. Returns merged data and combined
+# figure (subset scatter + genome-wide inset).
 
 compare_rra_vs_deseq2stat <- function(de_tbl,
                                       geo_rra_all,
@@ -156,17 +159,17 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
       x_logp_signed = sign(score_rra) * (-log10(p_adj))
     )
 
-  # ----------- Global correlation (rank(|.|) vs rank(|.|)) -----------
-  r1 <- rank(-abs(df$score_rra), ties.method = "average")
-  r2 <- rank(-abs(df$stat),      ties.method = "average")
-  rho_global <- spearman_rho(r1, r2)
+  # ----------- Genome-wide correlation (signed) -----------
+  rho_global <- spearman_rho(df$score_rra, df$stat)
 
-  # ----------- Robust subset -----------
-  df_sig <- df %>%
-    filter(score_rra != 0) %>%
-    arrange(desc(abs(score_rra)))
+  # ----------- Top subset: top_n genes by |RRA Z| -----------
+  # Genes with p_adj = 1 have Z = 0 and are tied, so the ranking is only
+  # defined among genes with Z != 0; top_n must not reach into the ties.
+  df <- df %>% arrange(desc(abs(score_rra)), p_adj, gene)
+  n_ranked <- sum(df$score_rra != 0)
+  stopifnot(top_n <= n_ranked)
 
-  df_top <- df_sig %>% slice_head(n = min(top_n, nrow(df_sig)))
+  df_top <- df %>% slice_head(n = top_n)
 
   rho_top <- spearman_rho(df_top$score_rra, df_top$stat)
 
@@ -186,17 +189,11 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
   # ----------- Figures -----------
   dir_cols <- c("up" = "red3", "down" = "dodgerblue3")
 
-  # Panel global (inset): rank(|RRA|) vs rank(|DE stat|)
-  p_global <- ggplot(df, aes(
-    x = rank(-abs(score_rra), ties.method = "average"),
-    y = rank(-abs(stat),      ties.method = "average"),
-    color = direction
-  )) +
+  # Genome-wide panel (inset): signed RRA Z vs DESeq2 stat, all genes
+  p_global <- ggplot(df, aes(x = score_rra, y = stat, color = direction)) +
     geom_point(alpha = 0.18, size = 0.6) +
     scale_color_manual(values = dir_cols, drop = FALSE) +
-    scale_x_log10() +
-    scale_y_log10() +
-    labs(x = "Rank(|RRA|)", y = paste0("Rank(|", label, " stat|)")) +
+    labs(x = "Signed RRA Z (all genes)", y = paste0(label, " stat")) +
     theme_bw(base_size = 9) +
     theme(
       legend.position = "none",
@@ -227,9 +224,10 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
       show.legend = FALSE
     ) +
     labs(
-      title    = "Genes with strongest RRA evidence (top |RRA|)",
+      title    = sprintf("Genes with strongest RRA evidence (top %s by |RRA Z|)",
+                         format(top_n, big.mark = ",")),
       subtitle = sprintf(
-        "%s: rho(top) = %.3f (N = %d) | rho(global ranks) = %.3f (N = %d)",
+        "%s: rho(top) = %.3f (N = %d) | rho(genome-wide) = %.3f (N = %d)",
         label, rho_top, nrow(df_top), rho_global, nrow(df)
       ),
       x = expression(sign(RRA) %.% -log[10](p[adj])),
@@ -253,10 +251,11 @@ compare_rra_vs_deseq2stat <- function(de_tbl,
     merged = df,
     robust_subset = df_top,
     label_points = label_df,
-    rho_global_ranks = rho_global,
+    rho_global_signed = rho_global,
     rho_top_signed = rho_top,
     n_global = nrow(df),
     n_robust = nrow(df_top),
+    n_ranked = n_ranked,
     plot_global = p_global,
     plot_robust = p_robust,
     plot_combined = p_combined
@@ -293,20 +292,66 @@ fig_s1 <- wrap_elements(res_ae_stat$plot_combined) +
 
 ggsave("Figure_S1.pdf", fig_s1, width = 20, height = 8, dpi = 300)
 
-# Reported correlations
-# AE:   rho(global ranks) = 0.133 (N = 14508) | rho(top robust) = 0.588 (N = 2000)
-# GTEx: rho(global ranks) = 0.181 (N = 14478) | rho(top robust) = 0.658 (N = 2000)
-cat("=== AE-DE ===\n")
-cat("rho(global ranks):", round(res_ae_stat$rho_global_ranks, 3),
-    " N =", res_ae_stat$n_global, "\n")
-cat("rho(top robust):  ", round(res_ae_stat$rho_top_signed, 3),
-    " N =", res_ae_stat$n_robust, "\n")
+# Figure S2: concordance as a function of subset size. For each contrast,
+# signed Spearman rho within the top-n genes by |RRA Z|, for n up to the
+# number of genes with Z != 0 (beyond that the ranking is tied).
+rho_by_size <- function(res, label, step = 250) {
+  df <- res$merged
+  sizes <- seq(step, res$n_ranked, by = step)
+  tibble(
+    contrast = label,
+    n        = sizes,
+    rho      = vapply(sizes, function(n)
+      spearman_rho(df$score_rra[seq_len(n)], df$stat[seq_len(n)]), numeric(1))
+  )
+}
 
-cat("=== GTEx-DE ===\n")
-cat("rho(global ranks):", round(res_gtex_stat$rho_global_ranks, 3),
-    " N =", res_gtex_stat$n_global, "\n")
-cat("rho(top robust):  ", round(res_gtex_stat$rho_top_signed, 3),
-    " N =", res_gtex_stat$n_robust, "\n")
+s2_curve <- bind_rows(
+  rho_by_size(res_ae_stat,   "TCGA vs AE"),
+  rho_by_size(res_gtex_stat, "TCGA vs GTEx")
+)
+s2_global <- tibble(
+  contrast = c("TCGA vs AE", "TCGA vs GTEx"),
+  rho      = c(res_ae_stat$rho_global_signed, res_gtex_stat$rho_global_signed)
+)
+s2_cols <- c("TCGA vs AE" = "#D55E00", "TCGA vs GTEx" = "#0072B2")
+
+fig_s2 <- ggplot(s2_curve, aes(x = n, y = rho, color = contrast)) +
+  geom_hline(data = s2_global, aes(yintercept = rho, color = contrast),
+             linetype = "dashed", show.legend = FALSE) +
+  geom_vline(xintercept = 2000, linetype = "dotted", color = "grey40") +
+  geom_line(linewidth = 0.8) +
+  geom_point(data = filter(s2_curve, n == 2000), size = 2.5) +
+  annotate("text", x = 2050, y = 0.02, label = "n = 2,000 (Fig. S1)",
+           hjust = 0, size = 3.2, color = "grey30") +
+  scale_color_manual(values = s2_cols) +
+  scale_x_continuous(labels = scales::comma) +
+  scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
+  labs(
+    x = "Subset size (top n genes by |RRA Z|)",
+    y = expression("Spearman " * rho * " (RRA Z vs DESeq2 stat)"),
+    color = NULL
+  ) +
+  theme_bw(base_size = 13) +
+  theme(legend.position = "top", panel.grid.minor = element_blank())
+
+ggsave("Figure_S2.pdf", fig_s2, width = 7, height = 5)
+
+# Reported correlations (RRA of January 2026, 20,656 genes)
+# AE:   rho(genome-wide) = 0.319 (N = 14508) | rho(top 2000) = 0.588
+# GTEx: rho(genome-wide) = 0.350 (N = 14478) | rho(top 2000) = 0.658
+s1_s2_tbl <- s2_curve %>%
+  filter(n %in% c(500, 1000, 2000, 3000)) %>%
+  mutate(n = paste0("rho_top", n)) %>%
+  pivot_wider(names_from = n, values_from = rho) %>%
+  mutate(
+    n_genes    = c(res_ae_stat$n_global, res_gtex_stat$n_global),
+    n_ranked   = c(res_ae_stat$n_ranked, res_gtex_stat$n_ranked),
+    rho_global = s2_global$rho,
+    .after = contrast
+  )
+readr::write_tsv(s1_s2_tbl, "S1_S2_concordance.tsv")
+print(as.data.frame(s1_s2_tbl), digits = 3)
 
 
 # =============================================================================
