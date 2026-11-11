@@ -156,14 +156,14 @@ p <- ggplot(plot_df, aes(x = overlap, y = regulon, fill = log10_p)) +
   labs(
     x = "Gene overlap",
     y = NULL,
-    title = "Master regulators enriched in highly dependent genes",
-    subtitle = "Master regulators enriched in highly dependent genes"
+    title = "MRs enriched in highly dependent genes"
   ) +
   
   theme_minimal(base_size = 14) +
   
   theme(
-    plot.title = element_text(face = "bold", size = 16),
+    plot.title = element_text(face = "bold", size = 15),
+    plot.title.position = "plot",
     plot.subtitle = element_text(size = 13, margin = margin(b = 12)),
     
     axis.text.y = element_text(size = 12, margin = margin(r = 2),

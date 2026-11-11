@@ -83,6 +83,11 @@ mat <- crispr_ovary_all %>%
 
 mat[is.na(mat)] <- NA
 
+# Drop regulators without a 24Q4 gene effect in most lines (HMGB3: multi-aligning guides removed)
+na_frac <- rowMeans(is.na(mat))
+print(sort(na_frac[na_frac > 0], decreasing = TRUE))
+mat <- mat[na_frac <= 0.5, , drop = FALSE]
+
 cat("Matrix dims:", nrow(mat), "x", ncol(mat), "\n")
 
 
@@ -137,7 +142,7 @@ ht <- Heatmap(
   column_names_gp = gpar(fontsize = 9, fontface = "bold"),
   
   column_title = "Gene dependency across ovarian cancer cell lines",
-  column_title_gp = gpar(fontsize = 20, fontface = "bold"),
+  column_title_gp = gpar(fontsize = 15, fontface = "bold"),
   
   rect_gp = gpar(col = NA),
   border = FALSE
