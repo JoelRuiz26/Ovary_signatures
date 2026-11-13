@@ -57,6 +57,10 @@ At a high level, the pipeline follows these stages:
    - Integrate CRISPR dependency evidence to prioritize regulators that are **essential for tumor cell fitness**.
    - Output a **high-confidence driver set** (reported as 17 central modulators in the manuscript).
 
+7. **Clinical association in TCGA-OV**
+   - Annotate the TCGA-OV cohort with overall survival and the standard prognostic covariates.
+   - Test **each of the 17 drivers separately** with Cox proportional hazards models (continuous expression and median split), unadjusted and adjusted for age, clinical stage and residual disease.
+
 ---
 
 ## How to Use / Reproduce (Quick Start)
