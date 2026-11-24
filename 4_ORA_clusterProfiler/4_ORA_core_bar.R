@@ -18,7 +18,7 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 # CONFIG
 # ============================================================
-base_dir <- "~/Ovary_signatures"
+base_dir <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 
 paths <- list(
   raw_deseq2 = file.path(base_dir, "0_DGE_GTEx", "DE_full_OVARY_DESeq2_GTEx.rds"),

@@ -1,199 +1,72 @@
-# Ovary Signatures — Reproducible transcriptomic analyses supporting an ovarian cancer manuscript
+# Ovary Signatures
 
-This repository contains the **R analysis pipeline** supporting the manuscript:
+R pipeline supporting the manuscript:
 
-> **Integrative Transcriptomics Addresses Control Ambiguity to Identify a Robust Ovarian Cancer Signature and Functionally Essential Driver Regulators**
+> Ruiz-Hernández et al. *Integrative transcriptomic and network-guided functional dependency analysis reveals essential transcriptional drivers in ovarian cancer* (under revision).
 
-The workflow integrates **multi-cohort transcriptomics**, **network-based Master Regulator Analysis (MRA)**, and **functional evidence from CRISPR dependency screens** to derive a robust ovarian cancer gene signature and a high-confidence set of upstream driver regulators.
+The workflow has three layers: (1) a consensus differential-expression signature of ovarian serous cystadenocarcinoma from three sources (GEO microarrays, TCGA vs GTEx ovary, TCGA vs autoencoder-selected controls); (2) Master Regulator Analysis (ARACNe-AP + msVIPER) over transcription factors and cofactors; (3) prioritization of regulators with CRISPR dependency data from DepMap.
 
-## Graphical abstract
+![Graphical abstract](assets/graphical_abstract.png)
 
-![Graphical abstract summarizing the multi-cohort meta-analysis, master regulator inference across transcriptional modulators, and DepMap-based functional prioritization.](assets/graphical_abstract.png)
----
+## Results in brief
 
-## Key Points
+- Consensus signature: 646 genes significant in the three sources (419 up, 227 down; direction by agreement of at least two sources).
+- Master regulators: 2,482 regulons tested, 1,174 significant (BH-adjusted empirical p < 0.05).
+- DepMap 24Q4, 58 ovarian epithelial tumor lines: 65 consensus genes with median gene effect ≤ −1; 47 regulators enriched in them; 16 candidate drivers that are themselves dependencies (median gene effect ≤ −0.5): ACTL6A, AURKB, BIRC5, CCNA2, CDK1, CDK2, CENPA, CHAF1B, CHEK1, ELOC, GMNN, KCMF1, PLK1, PTTG1, TIMELESS, WDHD1.
 
-- A **multi-source meta-analytic framework** combining **GEO microarray studies**, **TCGA RNA-seq** data, and **two complementary normal control strategies** yields a **consensus ovarian cancer gene signature** that is robust to dataset-specific noise and **control selection bias**, addressing a key limitation of single-cohort transcriptomic analyses.
-- Extending **Master Regulator Analysis** beyond canonical sequence-specific transcription factors to the broader class of **transcriptional modulators** (including **cofactors, chromatin remodelers, and epigenetic regulators**) systematically recovers upstream drivers that are invisible to expression-level filters and would be missed by TF-restricted analyses.
-- Integrating **CRISPR-Cas9 dependency data** from the **Cancer Dependency Map (DepMap)** as an orthogonal functional layer provides a principled criterion to distinguish transcriptionally inferred regulators from those that are **genuinely required for tumor cell survival**, reducing the candidate list to a high-confidence set suitable for experimental prioritization.
-- The fully documented **R pipeline** is designed for **modularity and reproducibility**, enabling direct application to other cancer types where matched normal tissue is scarce, with user-adjustable parameters at each analytical layer.
-- The framework identified **17 central transcriptional modulators** in ovarian cancer that are both master regulators of essential gene programs and **functionally required** in cancer cell lines, including well-known therapeutic targets and several understudied candidates that represent novel hypotheses for mechanistic and preclinical investigation.
+## Layout and paths
 
----
-
-## Repository Status
-
-This repository is under active development as analyses are curated for publication-quality reproducibility (scripts, parameters, outputs, and documentation).
-
-If you use this work, please cite the associated manuscript (see **Citation** below).
-
----
-
-## Overview of the Analysis Framework
-
-At a high level, the pipeline follows these stages:
-
-1. **Data acquisition & harmonization**
-   - Download and curate **GEO microarray** ovarian cancer studies.
-   - Obtain **TCGA RNA-seq** ovarian cancer expression and metadata.
-   - Ensure consistent gene identifiers and comparable expression units where applicable.
-
-2. **Control ambiguity handling (normal strategies)**
-   - Evaluate two complementary normal-control definitions/strategies to reduce biases caused by control choice (a common limitation in ovarian cancer transcriptomics where matched normals can be scarce).
-
-3. **Differential expression & meta-analysis**
-   - Compute within-study differential expression for each cohort/control strategy.
-   - Perform meta-analytic integration to obtain a **consensus differential signal**.
-   - Derive a **robust ovarian cancer signature** consistent across cohorts and control strategies.
-
-4. **Regulatory network inference / use of prior networks**
-   - Build or import a gene regulatory network suitable for regulator–target enrichment testing.
-
-5. **Master Regulator Analysis (MRA) for transcriptional modulators**
-   - Perform enrichment-based MRA to identify **upstream regulators** driving the consensus signature.
-   - Expand candidates beyond TFs to include **transcriptional modulators** (cofactors, chromatin remodelers, epigenetic regulators).
-
-6. **Functional prioritization with DepMap**
-   - Integrate CRISPR dependency evidence to prioritize regulators that are **essential for tumor cell fitness**.
-   - Output a **high-confidence driver set** (reported as 17 central modulators in the manuscript).
-
-7. **Clinical association in TCGA-OV**
-   - Annotate the TCGA-OV cohort with overall survival and the standard prognostic covariates.
-   - Test **each of the 17 drivers separately** with Cox proportional hazards models (continuous expression and median split), unadjusted and adjusted for age, clinical stage and residual disease.
-
----
-
-## How to Use / Reproduce (Quick Start)
-
-> **Note:** Commands and script names may vary depending on the current repository layout.  
-> If you add/rename scripts, keep this section updated so the paper remains reproducible.
-
-### 1) Clone the repository
+The code lives in this repository; data and results live under a **data root** with the same folder names (`0_DGE_GTEx/`, `1_DGE_AE/`, …). Every script reads the data root from the environment variable `OVARY_SIGNATURES` (default `~/Ovary_signatures`, i.e. the repository itself used as data root):
 
 ```bash
-git clone https://github.com/JoelRuiz26/Ovary_signatures.git
-cd Ovary_signatures
+export OVARY_SIGNATURES=/path/to/data_root
+Rscript 5_MRA/5_0_ovary_mra.R
 ```
 
-### 2) Create an R environment
+Other variables: `OCTAD_H5` (path to `octad.counts.and.tpm.h5`), `DEPMAP_DIR` (default `$OVARY_SIGNATURES/data/depmap_24Q4`), `ARACNE_JAR`, and the `MRA_*` settings documented in the header of `5_MRA/5_0_ovary_mra.R`.
 
-Recommended: use a project-local library with `renv`.
+## External inputs
 
-```r
-# In R
-install.packages("renv")
-renv::init()
-# If renv.lock exists:
-# renv::restore()
-```
+| Input | Used by | Where to get it |
+|---|---|---|
+| `octad.counts.and.tpm.h5` | `0_1`, `1_1`, `3_0` | OCTAD expression file (see the `octad` package documentation) |
+| GEO series (six microarray datasets) | `2_DEG_GEO/GEO_multi_RRA.R` | downloaded by the script with `GEOquery` |
+| `TcgaTargetGtex_gene_expected_count.gz`, `TcgaTargetGTEX_phenotype.txt.gz` | `5_00` | UCSC Xena Toil hub, `https://toil.xenahubs.net/download/` → `data/xena/` |
+| `Homo_sapiens_TF.txt`, `Homo_sapiens_Cof.txt` | `5_00` | AnimalTFDB → `data/regulators/` |
+| `DatabaseExtract_v_1.01.txt` | `5_00` | Lambert et al. 2018, `https://humantfs.ccbr.utoronto.ca/download.php` → `data/regulators/` |
+| `CRISPRGeneEffect.csv`, `Model.csv` | `6_*`, `7_2` | DepMap Public 24Q4, `https://depmap.org/portal/data_page/` → `data/depmap_24Q4/` |
+| ARACNe-AP (`aracne.jar`) | `5_MRA/aracneap.sh` | `https://github.com/califano-lab/ARACNe-AP` |
 
-If you do not use `renv`, install required packages manually (see **Dependencies**).
+## Order of execution
 
-### 3) Run the pipeline
+| Step | Script | Main outputs |
+|---|---|---|
+| 1 | `0_DGE_GTEx/0_1_Deseq_octad_GTEX.R` | `DE_full_OVARY_DESeq2_GTEx.rds` |
+| 2 | `1_DGE_AE/1_1_Deseq_octad_AE.R` | `DE_full_OVARY_DESeq2_AE.rds` |
+| 3 | `2_DEG_GEO/GEO_multi_RRA.R` | `GEO_ovarian_cancer_RRA_results.rds`, `GEO_ovarian_cancer_RRA_1row.rds` |
+| 4 | `3_Consensus_DGE_analysis/3_0_Counts_norm.R` | normalized counts, metadata, gene annotation (`3_0_Counts_metadata/`) |
+| 5 | `3_Consensus_DGE_analysis/3_1_DGE_list_shared.R` | consensus tables (`3_1_Core_signature/3_0_2_allgenes.tsv`), Venn diagram |
+| 6 | `3_2_Heatmap.R`, `3_2_Volcano_plots_core_signature.R`, `3_3_Fano_poison.R` | heatmaps, volcano plots, dispersion analysis |
+| 7 | `4_ORA_clusterProfiler/4_ORA_core_bar.R` | GO over-representation of the consensus |
+| 8 | `5_MRA/5_00_expression_regulators.R` | `ov_tcga_vst.tsv`, `modulators_all_tf_tfc_mirna.txt`, `onlyTFs.txt` |
+| 9 | `5_MRA/aracneap.sh` | `cancer_ovary_network_300bt_p1e-8.txt` |
+| 10 | `5_MRA/5_0_ovary_mra.R` | Figures S1–S2, `signature_core.tsv`, regulon object, `core_mra.tsv` |
+| 11 | `5_MRA/5_1_Elbow_TF.R` | top regulators by \|NES\| (elbow) |
+| 12 | `6_Depmap_ovary/6_1_Heatmap_coregenes.R` → `6_2_MR_Enriched.R` → `6_3_Heatmap_TF.R` | dependency of consensus genes, enriched regulators, candidate drivers |
+| 13 | `5_MRA/5_2_Circos_regulon_overlap.R`, `5_MRA/5_3_Circos_driver_hallmark.R` | circos plots of the candidates (need the raw network) |
+| 14 | `7_Figures/7_1_…`, `7_2_…`, `7_3_…` | assembled manuscript figures (`7_3` reads the caches written by `7_2`) |
+| 15 | `8_Survival_analysis/8_0_Clinical_metadata.R` → `8_1_Cox_drivers_survival.R` | TCGA-OV clinical table, Cox models (`8_1` reads the caches written by `7_2`) |
 
-This project is designed to run as a sequence of modular steps (preprocessing → meta-analysis → MRA → DepMap integration).
-
-Run the numbered scripts in order (e.g., `01_*.R`, `02_*.R`, …), or use per-module entry points corresponding to each analytical stage described above.
-
----
-
-## Project Structure (Recommended)
-
-If your repository already follows a different structure, consider aligning to a predictable layout such as:
-
-- `data/`
-  - `raw/` (downloaded input data; typically ignored in git)
-  - `processed/`
-- `metadata/` (sample annotations, study tables, mappings)
-- `scripts/` (R scripts; ideally numbered or modular)
-- `R/` (reusable functions)
-- `results/`
-  - `figures/`
-  - `tables/`
-- `docs/` (extra documentation, notes)
-- `renv/` + `renv.lock` (optional, for reproducible environments)
-
-**Important:** Large raw datasets should not be committed. Prefer links + download scripts, or Git LFS if truly necessary.
-
----
-
-## Inputs and Data Sources
-
-This pipeline integrates multiple public resources, which may include:
-
-- **GEO** (Gene Expression Omnibus): ovarian cancer microarray expression studies.
-- **TCGA**: ovarian cancer RNA-seq expression and clinical metadata.
-- **DepMap** (Cancer Dependency Map): CRISPR-Cas9 gene dependency scores for ovarian cancer (and related) cell lines.
-
-To support full reproducibility, this repository should include:
-- a table listing all included GEO accessions and inclusion criteria,
-- exact TCGA data release/version used,
-- DepMap release version/date and the specific files ingested.
-
----
-
-## Outputs (Typical)
-
-Depending on the configured steps, outputs may include:
-
-- **Consensus ovarian cancer gene signature**
-  - gene lists (up/down), effect sizes, FDR/q-values
-- **Meta-analysis summaries**
-  - per-study DE statistics, heterogeneity measures, sensitivity analyses
-- **Master regulators / transcriptional modulators**
-  - regulator ranking, enrichment scores, target programs, leading-edge genes
-- **DepMap-integrated prioritized drivers**
-  - final candidate set, dependency evidence, per-lineage summaries
-- **Publication-ready figures and tables**
-  - ready for inclusion in the manuscript and supplementary materials
-
----
+Steps 9 and 10 are the expensive ones: the network took about 18 h with 50 threads, and 10,000 permutations of msVIPER take a few minutes per signature with 55 workers. The permutation null of `5_0` uses one seed per permutation, so the result does not depend on the number of workers.
 
 ## Dependencies
 
-- **R** (recommended: recent stable release)
-- Common R ecosystem packages for:
-  - data handling: `tidyverse`, `data.table`
-  - differential expression / meta-analysis: (e.g., `limma`, `edgeR`, `DESeq2`, `metafor`) *(exact set depends on implementation)*
-  - enrichment / network analysis: (e.g., `viper`, `RTN`, `fgsea`, `igraph`) *(exact set depends on implementation)*
-  - visualization: `ggplot2`, `ComplexHeatmap`, `patchwork`
-
-> For publication-grade reproducibility, we recommend pinning versions via `renv.lock`.
-
----
-
-## Reproducibility Notes
-
-- **Random seeds:** set and record seeds for steps that involve stochasticity.
-- **Session info:** save `sessionInfo()` (or `devtools::session_info()`) alongside key results.
-- **Parameters:** store all major thresholds/choices (FDR cutoffs, effect-size thresholds, regulator sets, network source, DepMap cutoff rules) in a config file or documented script header.
-- **Compute environment:** note OS + R version; consider containerization (Docker) for long-term preservation.
-
----
-
-## Citation
-
-If you use this code or reproduce analyses, please cite:
-
-- Ruiz-Hernández et al., *Integrative transcriptomic and network-guided functional dependency analysis reveals essential transcriptional drivers in ovarian cancer* (manuscript in preparation / under submission).
-
-Once the article is published, please replace this section with the final citation (authors, year, journal, volume/issue, DOI).
-
----
+R ≥ 4.4 with: `tidyverse`, `vroom`, `janitor`, `DESeq2`, `limma`, `octad`, `octad.db`, `GEOquery`, `RobustRankAggreg`, `gprofiler2`, `biomaRt`, `clusterProfiler`, `enrichplot`, `org.Hs.eg.db`, `msigdbr`, `viper`, `ComplexHeatmap`, `pheatmap`, `dynamicTreeCut`, `circlize`, `ggvenn`, `ggrepel`, `ggh4x`, `patchwork`, `png`, `effsize`, `TCGAbiolinks`, `survival`. Java for ARACNe-AP.
 
 ## License
 
 GPL-3
----
 
 ## Contact
 
-For questions, issues, or collaboration:
-- Open a GitHub Issue in this repository, or
-- Contact the corresponding author(s) listed in the manuscript.
-
----
-
-## Acknowledgements
-
-This work leverages public resources from GEO, TCGA, and DepMap. Please also cite these resources according to their recommended guidelines when publishing derivative analyses.
+Open a GitHub issue, or contact the corresponding authors listed in the manuscript.

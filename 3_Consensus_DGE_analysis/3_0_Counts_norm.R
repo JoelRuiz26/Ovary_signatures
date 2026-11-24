@@ -5,8 +5,8 @@ suppressPackageStartupMessages({
 
 options(stringsAsFactors = FALSE)
 tumor   <- "OVARY"
-H5_PATH <- "/STORAGE/csbig/jruiz/Octad/octad.counts.and.tpm.h5"
-OUT_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_Counts_metadata"
+H5_PATH <- Sys.getenv("OCTAD_H5", "octad.counts.and.tpm.h5")  # OCTAD counts (octad.db)
+OUT_DIR <- file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_0_Counts_metadata")
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 # -------------------- helpers --------------------

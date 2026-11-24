@@ -7,10 +7,10 @@ suppressPackageStartupMessages({
 })
 
 # ===================== CONFIG ===================== #
-out_dir <- "~/Ovary_signatures/0_DGE_GTEx"
+out_dir <- file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "0_DGE_GTEx")
 setwd(out_dir)
 
-h5_path <- "/STORAGE/csbig/jruiz/Octad/octad.counts.and.tpm.h5"
+h5_path <- Sys.getenv("OCTAD_H5", "octad.counts.and.tpm.h5")  # OCTAD counts (octad.db)
 
 lfc_thr  <- 1.0
 padj_thr <- 0.01

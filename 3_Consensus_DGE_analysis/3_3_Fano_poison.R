@@ -7,8 +7,8 @@ suppressPackageStartupMessages({
   library(tibble)
 })
 
-IN_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_Counts_metadata/"
-OUT_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_3_Fano_Factor"
+IN_DIR <- file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_0_Counts_metadata")
+OUT_DIR <- file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_3_Fano_Factor")
 if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 # =========================
 # 1) Load normalized matrices
@@ -56,7 +56,7 @@ print(summary(fano_GTEX$fano_factor))
 # =========================
 # 5) Identify gene subsets (by presence flags ae/gtex/geo)
 # =========================
-all_genes <- vroom::vroom("~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv")
+all_genes <- vroom::vroom(file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv"))
 
 # The TSV has direction columns in uppercase (GTEx, AE, GEO) and binary
 # flags in lowercase (gtex, ae, geo); accessed directly by name.

@@ -77,11 +77,11 @@
 #   5_3_1_circos_drivers_hallmark.png
 #
 # Run with the working directory set to 5_MRA/, e.g.:
-#   setwd("~/Ovary_signatures/5_MRA"); source("5_3_Circos_driver_hallmark.R")
+#   setwd(file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "5_MRA")); source("5_3_Circos_driver_hallmark.R")
 # or from a terminal: cd 5_MRA && Rscript 5_3_Circos_driver_hallmark.R
 #
 # Needs: circlize, dplyr, tidyr, readr, clusterProfiler, msigdbr
-# (auto-installed if missing).
+# .
 #
 # RESOLVED OPEN QUESTION (was: carried over from 5_2_Circos_regulon_overlap.R)
 #   - CHAF1B was tentatively grouped under "Chromatin/centromere" (CAF-1
@@ -98,7 +98,7 @@
 
 required_pkgs <- c("circlize", "dplyr", "tidyr", "readr", "clusterProfiler", "msigdbr", "png")
 missing_pkgs <- setdiff(required_pkgs, rownames(installed.packages()))
-if (length(missing_pkgs) > 0) install.packages(missing_pkgs, repos = "https://cloud.r-project.org")
+if (length(missing_pkgs) > 0) stop("Missing packages: ", paste(missing_pkgs, collapse = ", "))
 
 suppressPackageStartupMessages({
   library(circlize)
@@ -111,7 +111,8 @@ suppressPackageStartupMessages({
 
 ## ---- 1. Paths & parameters -------------------------------------------------
 
-NETWORK_FILE <- "cancer_ovary_network_300bt_p1e-8.txt"   # Regulator / Target / MI / pvalue
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
+NETWORK_FILE <- file.path(BASE, "5_MRA/cancer_ovary_network_300bt_p1e-8.txt")   # Regulator / Target / MI / pvalue
 OUT_PREFIX   <- "5_3_1_circos_drivers_hallmark"
 
 PADJ_CUTOFF <- 0.05    # BH-adjusted p-value cutoff for a driver-term pair to

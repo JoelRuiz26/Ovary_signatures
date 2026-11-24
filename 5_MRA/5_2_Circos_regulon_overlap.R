@@ -53,10 +53,10 @@
 #   5_2_1_circos_drivers_regulon_overlap.png
 #
 # Run with the working directory set to 5_MRA/, e.g.:
-#   setwd("~/Ovary_signatures/5_MRA"); source("5_2_Circos_regulon_overlap.R")
+#   setwd(file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "5_MRA")); source("5_2_Circos_regulon_overlap.R")
 # or from a terminal: cd 5_MRA && Rscript 5_2_Circos_regulon_overlap.R
 #
-# Needs: circlize, dplyr, tidyr, readr (auto-installed if missing).
+# Needs: circlize, dplyr, tidyr, readr .
 # NOT executed/tested in the environment that authored this script (no R
 # available there) -- treat the first local run as a shakedown run and read
 # the console warnings before trusting the output figure.
@@ -82,7 +82,7 @@
 
 required_pkgs <- c("circlize", "dplyr", "tidyr", "readr", "png")
 missing_pkgs <- setdiff(required_pkgs, rownames(installed.packages()))
-if (length(missing_pkgs) > 0) install.packages(missing_pkgs, repos = "https://cloud.r-project.org")
+if (length(missing_pkgs) > 0) stop("Missing packages: ", paste(missing_pkgs, collapse = ", "))
 
 suppressPackageStartupMessages({
   library(circlize)
@@ -95,8 +95,9 @@ suppressPackageStartupMessages({
 # Relative paths assume the working directory is 5_MRA/ (same convention
 # used by 5_0_ovary_mra.R and 5_1_Elbow_TF.R).
 
-NETWORK_FILE   <- "cancer_ovary_network_300bt_p1e-8.txt"   # Regulator / Target / MI / pvalue
-MRA_TABLE_FILE <- "core_mra.tsv"                           # TF / NES / direction / signature_score / ...
+BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
+NETWORK_FILE   <- file.path(BASE, "5_MRA/cancer_ovary_network_300bt_p1e-8.txt")   # Regulator / Target / MI / pvalue
+MRA_TABLE_FILE <- file.path(BASE, "5_MRA/core_mra.tsv")                           # TF / NES / direction / signature_score / ...
 OUT_PREFIX     <- "5_2_1_circos_drivers_regulon_overlap"
 
 MIN_SHARED_TARGETS <- 3     # secondary floor: never draw a ribbon below this many shared

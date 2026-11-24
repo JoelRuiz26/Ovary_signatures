@@ -1,4 +1,4 @@
-setwd("~/Ovary_signatures/2_DEG_GEO")
+setwd(file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "2_DEG_GEO"))
 
 ## ============================================================
 ## Required packages

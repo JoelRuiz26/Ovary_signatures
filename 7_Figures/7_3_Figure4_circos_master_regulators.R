@@ -26,7 +26,7 @@ suppressPackageStartupMessages({
 options(stringsAsFactors = FALSE)
 
 # ===================== CONFIG ===================== #
-base_dir <- "~/Ovary_signatures"
+base_dir <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 out_dir  <- file.path(base_dir, "7_Figures")
 
 paths <- list(
@@ -34,8 +34,8 @@ paths <- list(
   dep_deg  = file.path(base_dir, "6_Depmap_ovary/6_1_0_Dependency_DEG_core.tsv")
 )
 
-dep_cache <- file.path(out_dir, "7_2_depmap_ovary_cache.rds")
-mra_cache <- file.path(out_dir, "7_2_mra_enrichment_cache.rds")
+dep_cache <- file.path(out_dir, "7_2_depmap_ovary_24Q4_646_cache.rds")
+mra_cache <- file.path(out_dir, "7_2_mra_enrichment_24Q4_646_cache.rds")
 net_cache <- file.path(out_dir, "7_3_circos_network_cache.rds")
 
 DEP_MR     <- -0.5   # essentiality threshold applied to the regulators

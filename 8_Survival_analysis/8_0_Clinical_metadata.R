@@ -19,7 +19,7 @@ suppressPackageStartupMessages({
 
 options(stringsAsFactors = FALSE)
 
-base_dir <- "~/Ovary_signatures"
+base_dir <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 out_dir  <- file.path(base_dir, "8_Survival_analysis")
 gdc_dir  <- file.path(path.expand(out_dir), "GDCdata")
 

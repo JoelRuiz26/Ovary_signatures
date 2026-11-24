@@ -6,9 +6,9 @@ suppressPackageStartupMessages({
   library(dynamicTreeCut)
 })
 
-IN_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_0_Counts_metadata"
+IN_DIR <- file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_0_Counts_metadata")
 
-OUT_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_2_DGE_volcano_plots"
+OUT_DIR <- file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_2_DGE_volcano_plots")
 
 # =========================
 # 0) Load inputs
@@ -16,7 +16,7 @@ OUT_DIR <- "~/Ovary_signatures/3_Consensus_DGE_analysis/3_2_DGE_volcano_plots"
 dds_gtex <- readRDS(file.path(IN_DIR, "3_3_2_dds_tumor_Ctlhomolog.rds"))
 dds_ae   <- readRDS(file.path(IN_DIR, "3_3_2_dds_tumor_CtlAuto.rds"))
 
-core_signature <- vroom("~/Ovary_signatures/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv") %>%
+core_signature <- vroom(file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv")) %>%
   filter(n_sources == 3)
 core_genes <- unique(core_signature$ensembl)
 

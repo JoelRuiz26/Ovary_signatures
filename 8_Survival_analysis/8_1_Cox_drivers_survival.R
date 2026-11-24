@@ -46,7 +46,7 @@ suppressPackageStartupMessages({
 options(stringsAsFactors = FALSE)
 
 # ===================== CONFIG ===================== #
-base_dir <- "~/Ovary_signatures"
+base_dir <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 out_dir  <- file.path(base_dir, "8_Survival_analysis")
 
 paths <- list(
@@ -54,8 +54,8 @@ paths <- list(
   counts    = file.path(base_dir, "3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_2_norm_counts_tumor_ONLY.rds"),
   metadata  = file.path(base_dir, "3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_1_metadata_all.rds"),
   annot     = file.path(base_dir, "3_Consensus_DGE_analysis/3_0_Counts_metadata/3_3_2_gene_annotation_UNION_universe.rds"),
-  dep_cache = file.path(base_dir, "7_Figures/7_2_depmap_ovary_cache.rds"),
-  mra_cache = file.path(base_dir, "7_Figures/7_2_mra_enrichment_cache.rds")
+  dep_cache = file.path(base_dir, "7_Figures/7_2_depmap_ovary_24Q4_646_cache.rds"),
+  mra_cache = file.path(base_dir, "7_Figures/7_2_mra_enrichment_24Q4_646_cache.rds")
 )
 
 DEP_MR  <- -0.5    # essentiality threshold that defines the drivers
