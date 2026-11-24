@@ -12,21 +12,32 @@
 #      (core signature + independent AE-z and GTEx-z signatures)
 #   5. Post-processing: classify regulators, export tables, generate figures
 #
-# Input files:
-#   ../2_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds   — RRA results (GEO)
-#   ../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds        — DESeq2 results (TCGA vs AE)
-#   ../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds    — DESeq2 results (TCGA vs GTEx)
-#   ov_tcga_vst.tsv                                 — TCGA VST expression matrix
-#   cancer_ovary_network_300bt_p1e-8.txt            — ARACNe-AP network
+# Input files (relative to the data root BASE, env var OVARY_SIGNATURES):
+#   2_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds      — RRA results (GEO)
+#   1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds           — DESeq2 results (TCGA vs AE)
+#   0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds       — DESeq2 results (TCGA vs GTEx)
+#   5_MRA/ov_tcga_vst.tsv                           — TCGA VST matrix (5_00_expression_regulators.R)
+#   5_MRA/cancer_ovary_network_300bt_p1e-8.txt      — ARACNe-AP network (aracneap.sh)
+#   5_MRA/onlyTFs.txt                               — TFs with a known motif (5_00_expression_regulators.R)
 #
-# Output files:
+# Output files (written to MRA_OUTDIR, default BASE/5_MRA):
 #   Figure_S1.pdf (panel A: RRA vs AE-DE, panel B: RRA vs GTEx-DE)
 #   Figure_S2.pdf (concordance as a function of subset size)
 #   S1_S2_concordance.tsv (correlations reported in the text)
+#   signature_core.tsv (genes and scores of the msVIPER input signature)
 #   core_mra.tsv
+#   mra_results.rds (msVIPER tables and parameters of every signature)
 #   top_15n15_mrs.tsv
 #   MRA_signature_vs_absNES_sizeFDR.png / .pdf
-#   ovary_mra.RData
+#
+# Settings (environment variables):
+#   OVARY_SIGNATURES  data root (default ~/Ovary_signatures)
+#   MRA_OUTDIR        output folder (default BASE/5_MRA)
+#   MRA_SIGNATURE     "centered" (default; analysis as submitted) or "raw"
+#   MRA_KNEE          "submitted" (default), "fixed" or "none"
+#   MRA_NPERM         permutations of the null model (default 10000)
+#   MRA_CORES         parallel workers (default: half of the cores minus one)
+#   MRA_SINGLE_SOURCE "TRUE" (default) also runs the AE-only and GTEx-only signatures
 # =============================================================================
 
 
@@ -52,9 +63,19 @@ suppressPackageStartupMessages({
 # 1. Load data
 # -----------------------------------------------------------------------------
 
-geo_rra_1row     <- readRDS("../2_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds")
-DE_full_OVARY_AE <- readRDS("../1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds")
-DE_full_OVARY_GTEX <- readRDS("../0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds")
+BASE    <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
+OUT_DIR <- Sys.getenv("MRA_OUTDIR", file.path(BASE, "5_MRA"))
+dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
+
+SIGNATURE_MODE <- match.arg(Sys.getenv("MRA_SIGNATURE", "centered"), c("centered", "raw"))
+KNEE_MODE      <- match.arg(Sys.getenv("MRA_KNEE", "submitted"), c("submitted", "fixed", "none"))
+N_PERM         <- as.integer(Sys.getenv("MRA_NPERM", "10000"))
+N_CORES        <- as.integer(Sys.getenv("MRA_CORES", max(1, parallel::detectCores() %/% 2 - 1)))
+RUN_SINGLE     <- as.logical(Sys.getenv("MRA_SINGLE_SOURCE", "TRUE"))
+
+geo_rra_1row       <- readRDS(file.path(BASE, "2_DEG_GEO/GEO_ovarian_cancer_RRA_1row.rds"))
+DE_full_OVARY_AE   <- readRDS(file.path(BASE, "1_DGE_AE/DE_full_OVARY_DESeq2_AE.rds"))
+DE_full_OVARY_GTEX <- readRDS(file.path(BASE, "0_DGE_GTEx/DE_full_OVARY_DESeq2_GTEx.rds"))
 
 
 # =============================================================================
@@ -290,7 +311,7 @@ fig_s1 <- wrap_elements(res_ae_stat$plot_combined) +
   wrap_elements(res_gtex_stat$plot_combined) +
   plot_annotation(tag_levels = "A")
 
-ggsave("Figure_S1.pdf", fig_s1, width = 20, height = 8, dpi = 300)
+ggsave(file.path(OUT_DIR, "Figure_S1.pdf"), fig_s1, width = 20, height = 8, dpi = 300)
 
 # Figure S2: concordance as a function of subset size. For each contrast,
 # signed Spearman rho within the top-n genes by |RRA Z|, for n up to the
@@ -335,7 +356,7 @@ fig_s2 <- ggplot(s2_curve, aes(x = n, y = rho, color = contrast)) +
   theme_bw(base_size = 13) +
   theme(legend.position = "top", panel.grid.minor = element_blank())
 
-ggsave("Figure_S2.pdf", fig_s2, width = 7, height = 5)
+ggsave(file.path(OUT_DIR, "Figure_S2.pdf"), fig_s2, width = 7, height = 5)
 
 # Reported correlations (RRA of January 2026, 20,656 genes)
 # AE:   rho(genome-wide) = 0.319 (N = 14508) | rho(top 2000) = 0.588
@@ -350,7 +371,7 @@ s1_s2_tbl <- s2_curve %>%
     rho_global = s2_global$rho,
     .after = contrast
   )
-readr::write_tsv(s1_s2_tbl, "S1_S2_concordance.tsv")
+readr::write_tsv(s1_s2_tbl, file.path(OUT_DIR, "S1_S2_concordance.tsv"))
 print(as.data.frame(s1_s2_tbl), digits = 3)
 
 
@@ -371,18 +392,30 @@ zscore <- function(x) {
 # Elbow (knee-point) detection on a sorted absolute-value vector.
 # Identifies the index of maximum curvature by finding the point of greatest
 # vertical distance from the diagonal baseline (normalized rank vs value).
-pick_knee <- function(x) {
+#
+# mode = "submitted" measures the distance ABOVE the diagonal. A sorted |z|
+# curve is convex and lies below it, so this picks a point at the tail and
+# removes almost nothing (6,551 of 6,576 genes in the submitted analysis).
+# mode = "fixed" measures the distance BELOW the diagonal (the actual elbow).
+pick_knee <- function(x, mode = c("submitted", "fixed", "none")) {
+  mode <- match.arg(mode)
   x <- sort(abs(x), decreasing = TRUE)
   x <- x[is.finite(x)]
-  if (length(x) < 10) return(length(x))
+  if (mode == "none" || length(x) < 10) return(length(x))
 
   i   <- seq_along(x)
   i_n <- (i - min(i)) / (max(i) - min(i))
   x_n <- (x - min(x)) / (max(x) - min(x))
 
   base <- 1 - i_n           # decreasing diagonal baseline
-  d    <- x_n - base        # vertical distance above baseline
+  d    <- if (mode == "submitted") x_n - base else base - x_n
   which.max(d)
+}
+
+# Scale without centering (keeps the sign of the original statistic)
+scale_only <- function(x) {
+  x <- as.numeric(x)
+  x / sqrt(mean(x^2, na.rm = TRUE))
 }
 
 # Build a named numeric vector (msVIPER-compatible signature) from the
@@ -464,12 +497,19 @@ m <- rra_scores %>%
   dplyr::inner_join(ae_scores,   by = "gene") %>%
   dplyr::inner_join(gtex_scores, by = "gene")
 
-# Z-score normalize each source to a common scale before averaging
+# Bring each source to a common scale before averaging.
+#   "centered": z-score (mean 0). The direction of a gene is then the sign of
+#               the CENTERED value: genes with RRA Z = 0 (adjusted p = 1) fall
+#               below the mean and count as "down" in GEO, and small positive
+#               GTEx statistics (below the mean, ~2.4) change sign.
+#   "raw":      scale only; the direction is the sign of the original
+#               statistic and genes with RRA Z = 0 have no direction.
+norm_fun <- if (SIGNATURE_MODE == "centered") zscore else scale_only
 m <- m %>%
   dplyr::mutate(
-    z_rra  = zscore(z_rra),
-    z_ae   = zscore(stat_ae),
-    z_gtex = zscore(stat_gtex)
+    z_rra  = norm_fun(z_rra),
+    z_ae   = norm_fun(stat_ae),
+    z_gtex = norm_fun(stat_gtex)
   )
 
 # Assign directional sign per source
@@ -483,9 +523,9 @@ m <- m %>%
 # Sign concordance summary
 # TRUE  = consistent direction across all three sources
 # FALSE = at least one source disagrees
-table(m$s_rra == m$s_ae & m$s_rra == m$s_gtex)
-# FALSE  TRUE
-#  7784  6576
+print(table(m$s_rra != 0 & m$s_rra == m$s_ae & m$s_rra == m$s_gtex))
+# centered:  FALSE 7784   TRUE 6576
+# raw:       FALSE 11727  TRUE 2633
 
 
 # -----------------------------------------------------------------------------
@@ -494,20 +534,22 @@ table(m$s_rra == m$s_ae & m$s_rra == m$s_gtex)
 
 # Retain only genes with concordant direction across RRA, AE, and GTEx
 core_concordant <- m %>%
-  dplyr::filter(s_rra == s_ae, s_rra == s_gtex) %>%
+  dplyr::filter(s_rra != 0, s_rra == s_ae, s_rra == s_gtex) %>%
   dplyr::mutate(z_mean = (z_rra + z_ae + z_gtex) / 3) %>%
   dplyr::arrange(dplyr::desc(abs(z_mean)))
 
 # Apply elbow criterion on |z_mean| to identify the inflection point
 # that separates strongly concordant genes from the noise plateau
-k <- pick_knee(core_concordant$z_mean)
-message("Elbow cutoff: k = ", k, " genes retained in core signature")
+k <- pick_knee(core_concordant$z_mean, mode = KNEE_MODE)
+message("Signature: ", SIGNATURE_MODE, " | knee: ", KNEE_MODE,
+        " | concordant genes: ", nrow(core_concordant), " | retained: ", k)
 
 core_sel <- core_concordant %>% dplyr::slice_head(n = k)
 message("Unique genes in core signature: ", length(unique(core_sel$gene)))
-# Expected: 6551
+# Expected with the submitted settings (centered, submitted): 6551
 
 signature_core <- make_signature_from_core(core_sel)
+readr::write_tsv(core_sel, file.path(OUT_DIR, "signature_core.tsv"))
 
 # Quick checks
 str(signature_core)
@@ -521,16 +563,21 @@ head(signature_core)
 # Load TCGA VST expression matrix (genes x samples)
 # This is the same matrix used during ARACNe-AP network inference,
 # ensuring consistent gene identifiers and feature space.
-eset_tbl <- vroom::vroom("ov_tcga_vst.tsv")
-eset <- eset_tbl %>%
-  tibble::column_to_rownames(var = colnames(eset_tbl)[1]) %>%
-  as.matrix()
 
 # Convert ARACNe-AP network to VIPER-compatible regulon object
 # Network parameters: 300 bootstraps, MI p-value threshold = 1e-8
-network_file <- "cancer_ovary_network_300bt_p1e-8.txt"
-regulon <- aracne2regulon(network_file, eset)
-saveRDS(regulon, "cancer_ovary_regulon_300bt_p1e-8.rds")
+network_file <- file.path(BASE, "5_MRA/cancer_ovary_network_300bt_p1e-8.txt")
+regulon_file <- file.path(BASE, "5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
+if (file.exists(regulon_file)) {
+  regulon <- readRDS(regulon_file)
+} else {
+  eset_tbl <- vroom::vroom(file.path(BASE, "5_MRA/ov_tcga_vst.tsv"), show_col_types = FALSE)
+  eset <- eset_tbl %>%
+    tibble::column_to_rownames(var = colnames(eset_tbl)[1]) %>%
+    as.matrix()
+  regulon <- aracne2regulon(network_file, eset)
+  saveRDS(regulon, regulon_file)
+}
 
 
 # =============================================================================
@@ -574,7 +621,10 @@ msviper_perm_null <- function(signature,
                                verbose   = TRUE) {
 
   stopifnot(is.numeric(signature), !is.null(names(signature)))
+  # One seed per permutation, drawn in the master process: the null does not
+  # depend on the number of workers or on how the permutations are split.
   set.seed(seed)
+  perm_seeds <- sample.int(.Machine$integer.max, nperm)
 
   # Observed msVIPER run
   obs      <- msviper(signature, regulon, minsize = minsize, verbose = FALSE)
@@ -588,6 +638,7 @@ msviper_perm_null <- function(signature,
 
   # Single permutation: returns NES vector aligned to tf_names
   one_perm <- function(i) {
+    set.seed(perm_seeds[i])
     sig_p <- permute_signature_names(signature)
     tmp   <- msviper(sig_p, regulon, minsize = minsize, verbose = FALSE)
     tmp$es$nes[tf_names]
@@ -600,7 +651,7 @@ msviper_perm_null <- function(signature,
     parallel::clusterExport(
       cl,
       varlist = c("signature", "regulon", "minsize", "tf_names",
-                  "permute_signature_names"),
+                  "permute_signature_names", "perm_seeds"),
       envir = environment()
     )
     parallel::clusterEvalQ(cl, library(viper))
@@ -654,15 +705,17 @@ msviper_perm_null <- function(signature,
 mra_core <- msviper_perm_null(
   signature = signature_core,
   regulon   = regulon,
-  nperm     = 10000,
+  nperm     = N_PERM,
   minsize   = 20,
   seed      = 42,
   two_sided = TRUE,
-  cores     = 80,
+  cores     = N_CORES,
   verbose   = TRUE
 )
 
 head(mra_core$table, 20)
+
+if (RUN_SINGLE) {
 
 # Independent validation signatures (z-score normalized DESeq2 stat)
 # Z-score normalization applied to homogenize scale with signature_core
@@ -673,22 +726,22 @@ sig_gtex_z <- make_signature_from_deseq(DE_full_OVARY_GTEX, transform = "zscore"
 mra_ae_z <- msviper_perm_null(
   signature = sig_ae_z,
   regulon   = regulon,
-  nperm     = 10000,
+  nperm     = N_PERM,
   minsize   = 20,
   seed      = 42,
   two_sided = TRUE,
-  cores     = 80,
+  cores     = N_CORES,
   verbose   = TRUE
 )
 
 mra_gtex_z <- msviper_perm_null(
   signature = sig_gtex_z,
   regulon   = regulon,
-  nperm     = 10000,
+  nperm     = N_PERM,
   minsize   = 20,
   seed      = 42,
   two_sided = TRUE,
-  cores     = 80,
+  cores     = N_CORES,
   verbose   = TRUE
 )
 
@@ -743,6 +796,17 @@ cat("core ∩ GTEx:  ", length(intersect(sig_tf_core, sig_tf_gtex)), "\n")
 cat("=== NES sign concordance: core vs AE ===\n")
 print(table(sign(cmp$NES_core), sign(cmp$NES_ae)))
 
+}  # RUN_SINGLE
+
+saveRDS(
+  list(core = mra_core[c("table", "params")],
+       ae   = if (RUN_SINGLE) mra_ae_z[c("table", "params")],
+       gtex = if (RUN_SINGLE) mra_gtex_z[c("table", "params")],
+       settings = list(signature = SIGNATURE_MODE, knee = KNEE_MODE,
+                       n_genes = length(signature_core))),
+  file.path(OUT_DIR, "mra_results.rds")
+)
+
 
 # =============================================================================
 # SECTION 6: Post-processing and output
@@ -757,7 +821,7 @@ core_mrs <- dplyr::as_tibble(mra_core$table) %>%
   dplyr::mutate(rank_abs_NES = dplyr::row_number())
 
 # "Is TF? == Yes" & "TF assessment == Known motif" in DatabaseExtract_v_1.01.txt from humantfs.ccbr.utoronto.ca
-TFlist <- readLines("centroids/onlyTFs.txt")
+TFlist <- readLines(file.path(BASE, "5_MRA/onlyTFs.txt"))
 
 
 core_mrs_processed <- core_mrs %>%
@@ -794,7 +858,7 @@ core_mrs_processed <- core_mrs %>%
   ) %>%
   dplyr::arrange(dplyr::desc(NES))
 
-readr::write_tsv(core_mrs_processed, file = "core_mra.tsv")
+readr::write_tsv(core_mrs_processed, file = file.path(OUT_DIR, "core_mra.tsv"))
 
 
 # -----------------------------------------------------------------------------
@@ -836,7 +900,7 @@ df_labels <- dplyr::bind_rows(
     dplyr::arrange(dplyr::desc(abs_NES)) %>% dplyr::slice_head(n = label_n)
 )
 
-readr::write_tsv(df_labels, file = "top_15n15_mrs.tsv")
+readr::write_tsv(df_labels, file = file.path(OUT_DIR, "top_15n15_mrs.tsv"))
 
 p_mra <- ggplot(df_vol, aes(x = sig_x, y = abs_NES)) +
   geom_hline(yintercept = nes_cut, linetype = "dashed") +
@@ -877,8 +941,7 @@ p_mra <- ggplot(df_vol, aes(x = sig_x, y = abs_NES)) +
   theme_bw(base_size = 13) +
   theme(legend.position = "top")
 
-print(p_mra)
 
-ggsave("MRA_signature_vs_absNES_sizeFDR.png", p_mra, width = 10, height = 7, dpi = 300)
-ggsave("MRA_signature_vs_absNES_sizeFDR.pdf", p_mra, width = 10, height = 7)
+ggsave(file.path(OUT_DIR, "MRA_signature_vs_absNES_sizeFDR.png"), p_mra, width = 10, height = 7, dpi = 300)
+ggsave(file.path(OUT_DIR, "MRA_signature_vs_absNES_sizeFDR.pdf"), p_mra, width = 10, height = 7)
 

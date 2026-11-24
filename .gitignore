@@ -12,7 +12,11 @@
 !**/*.sh
 !**/*.png
 !**/*.pdf
-!Ovary_signatures/5_MRA/modulators_all_tf_tfc_mirna.txt
+
+# Small inputs and result tables kept under version control
+!5_MRA/modulators_all_tf_tfc_mirna.txt
+!5_MRA/onlyTFs.txt
+!5_MRA/S1_S2_concordance.tsv
 
 # R default graphics device output
 Rplots.pdf
