@@ -16,7 +16,7 @@ library(ggplot2)
 
 full_genes <- vroom(
   paste0(BASE, "/3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv")) %>%
-  filter(n_sources == 3, n_up == 3 | n_down == 3)  # unanimous direction in all three sources (593 genes)
+  filter(n_sources == 3)  # significant in all three sources; direction by agreement of >= 2 of 3 (646 genes)
 # TF list
 TF_list <- vroom(
   paste0(BASE, "/5_MRA/core_mra.tsv"),show_col_types=FALSE)

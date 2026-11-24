@@ -37,7 +37,7 @@ if (!dir.exists(OUT_DIR)) dir.create(OUT_DIR, recursive = TRUE)
 DGE_list_shared <- vroom(DGE_PATH, show_col_types = FALSE)
 
 cons_genes <- DGE_list_shared %>%
-  filter(n_sources == 3, n_up == 3 | n_down == 3) %>%  # unanimous direction in all three sources (593 genes)
+  filter(n_sources == 3) %>%  # significant in all three sources; direction by agreement of >= 2 of 3 (646 genes)
   transmute(gene_u = toupper(gene)) %>%
   distinct()
 

@@ -13,8 +13,14 @@
 #   C) Dependency heatmap of the
 #      enriched master regulators      <- 6_3_Heatmap_TF.R
 #
-# Panels keep the numbers of the original figures; only the
-# layout, sizes, typography and colour code are re-worked here.
+# Revision (FIG, 2026-11): DepMap release 24Q4 read from the
+# CSV files (CRISPRGeneEffect.csv, Model.csv) instead of the
+# Bioconductor 'depmap' package, which ships release 22Q2; 58
+# "Ovarian Epithelial Tumor" lines; consensus = 646 genes
+# significant in all three sources (direction by agreement of
+# >= 2 of 3); panel A shows the
+# median dependency (the statistic used for the HD-genes).
+# Same logic as 6_1, 6_2 and 6_3 in branch revision-depmap24q4.
 #
 # The DepMap CRISPR table (~19 M rows) and the Fisher enrichment
 # are cached in this folder, so re-running the script to adjust
@@ -42,21 +48,23 @@ suppressPackageStartupMessages({
 options(stringsAsFactors = FALSE)
 
 # ===================== CONFIG ===================== #
-base_dir <- "~/Ovary_signatures"
+base_dir   <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")   # project data root
+depmap_dir <- Sys.getenv("DEPMAP_DIR", file.path(base_dir, "data/depmap_24Q4"))
+invisible(Sys.setlocale("LC_CTYPE", "C.UTF-8"))  # render Unicode minus signs correctly
 
 paths <- list(
   all_genes  = file.path(base_dir, "3_Consensus_DGE_analysis/3_1_Core_signature/3_0_2_allgenes.tsv"),
-  dep_deg    = file.path(base_dir, "6_Depmap_ovary/6_1_0_Dependency_DEG_core.tsv"),
   mra_tsv    = file.path(base_dir, "5_MRA/core_mra.tsv"),
   regulons   = file.path(base_dir, "5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds"),
   top_nes    = file.path(base_dir, "5_MRA/5_0_Top_elbow_regulones.rds")
 )
 
-out_dir <- file.path(base_dir, "7_Figures")
+out_dir <- Sys.getenv("FIG_OUT_DIR", file.path(base_dir, "7_Figures"))
 dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
 
-dep_cache <- file.path(out_dir, "7_2_depmap_ovary_cache.rds")
-mra_cache <- file.path(out_dir, "7_2_mra_enrichment_cache.rds")
+# Caches are tagged with the release so the old 22Q2 caches are never reused
+dep_cache <- file.path(out_dir, "7_2_depmap_ovary_24Q4_646_cache.rds")
+mra_cache <- file.path(out_dir, "7_2_mra_enrichment_24Q4_646_cache.rds")
 
 # Thresholds of the upstream scripts
 DEP_ESSENTIAL <- -0.5    # dependency line drawn in panel A
@@ -118,24 +126,26 @@ theme_panel <- function(base_size = BASE_SIZE) {
 if (file.exists(dep_cache)) {
   dep <- readRDS(dep_cache)
 } else {
-  suppressPackageStartupMessages(library(depmap))
-
+  # Significant in all three sources; direction by agreement of >= 2 of 3 (646 genes)
   cons_genes <- vroom(path.expand(paths$all_genes), show_col_types = FALSE) %>%
-    filter(n_sources == 3, !is.na(consensus_direction), consensus_direction != "none") %>%
+    filter(n_sources == 3) %>%
     transmute(gene_u = toupper(gene)) %>%
     distinct()
 
-  ovary_lines <- depmap_metadata() %>%
-    filter(lineage == "ovary", primary_disease == "Ovarian Cancer") %>%
-    pull(depmap_id)
+  # DepMap 24Q4: Chronos gene effect for the ovarian epithelial tumor lines
+  ovary_lines <- vroom(file.path(depmap_dir, "Model.csv"), show_col_types = FALSE) %>%
+    filter(OncotreePrimaryDisease == "Ovarian Epithelial Tumor") %>%
+    dplyr::select(depmap_id = ModelID, cell = StrippedCellLineName)
 
-  crispr <- depmap_crispr() %>%
-    filter(depmap_id %in% ovary_lines) %>%
-    transmute(
-      gene = toupper(gene_name),
-      cell = sub("_OVARY$", "", cell_line),
-      dep  = dependency
-    )
+  gene_effect <- vroom(file.path(depmap_dir, "CRISPRGeneEffect.csv"), show_col_types = FALSE)
+  names(gene_effect)[1] <- "depmap_id"
+
+  crispr <- gene_effect %>%
+    inner_join(ovary_lines, by = "depmap_id") %>%
+    dplyr::select(-depmap_id) %>%
+    pivot_longer(-cell, names_to = "gene", values_to = "dep") %>%
+    mutate(gene = toupper(sub(" \\(\\d+\\)$", "", gene)))
+  rm(gene_effect)
 
   to_matrix <- function(df) {
     df %>%
@@ -167,14 +177,14 @@ dep_summary <- as.data.frame(dep$core) %>%
   pivot_longer(-gene, names_to = "cell", values_to = "dep") %>%
   group_by(gene) %>%
   summarise(
-    mean_dep = mean(dep, na.rm = TRUE),
-    sd_dep   = sd(dep, na.rm = TRUE),
-    .groups  = "drop"
+    median_dep = median(dep, na.rm = TRUE),
+    sd_dep     = sd(dep, na.rm = TRUE),
+    .groups    = "drop"
   ) %>%
-  arrange(mean_dep) %>%
+  arrange(median_dep) %>%
   mutate(rank = row_number())
 
-dep_lims <- range(dep_summary$mean_dep, na.rm = TRUE)
+dep_lims <- range(dep_summary$median_dep, na.rm = TRUE)
 
 # Same four stops and the same anchoring as the heatmap of panel C,
 # so that a given tone means the same dependency in both panels
@@ -186,7 +196,8 @@ scale_dep <- function(aesthetic, guide) {
     list(
       colours = c(col_dep_deep, col_dep_neg, col_dep_mid, col_dep_pos),
       values  = rescale(dep_stops),
-      name    = "Mean dependency score",
+      limits  = dep_lims,   # same limits in the main plot and in the inset
+      name    = "Median dependency score",
       guide   = guide
     )
   )
@@ -194,10 +205,10 @@ scale_dep <- function(aesthetic, guide) {
 
 zoom_df <- dep_summary %>% filter(rank <= TOP_N)
 
-p_zoom <- ggplot(zoom_df, aes(rank, mean_dep)) +
-  geom_errorbar(aes(ymin = mean_dep - sd_dep, ymax = mean_dep + sd_dep),
+p_zoom <- ggplot(zoom_df, aes(rank, median_dep)) +
+  geom_errorbar(aes(ymin = median_dep - sd_dep, ymax = median_dep + sd_dep),
                 width = 0.25, linewidth = 0.45, colour = "grey55") +
-  geom_point(aes(fill = mean_dep), shape = 21, size = 3.2,
+  geom_point(aes(fill = median_dep), shape = 21, size = 3.2,
              colour = "grey25", stroke = 0.3) +
   geom_text_repel(
     aes(label = gene), size = 3.7, fontface = "bold", colour = "grey10",
@@ -217,11 +228,11 @@ p_zoom <- ggplot(zoom_df, aes(rank, mean_dep)) +
     plot.margin      = margin(6, 8, 6, 6)
   )
 
-p_rank <- ggplot(dep_summary, aes(rank, mean_dep)) +
-  geom_ribbon(aes(ymin = mean_dep - sd_dep, ymax = mean_dep + sd_dep, fill = mean_dep),
+p_rank <- ggplot(dep_summary, aes(rank, median_dep)) +
+  geom_ribbon(aes(ymin = median_dep - sd_dep, ymax = median_dep + sd_dep, fill = median_dep),
               alpha = 0.22, colour = NA) +
   geom_line(colour = "grey45", linewidth = 0.4) +
-  geom_point(aes(fill = mean_dep), shape = 21, size = 1.5,
+  geom_point(aes(fill = median_dep), shape = 21, size = 1.5,
              colour = "grey25", stroke = 0.18) +
   geom_hline(yintercept = DEP_ESSENTIAL, linetype = "dotted",
              colour = col_dep_neg, linewidth = 0.8) +
@@ -231,7 +242,7 @@ p_rank <- ggplot(dep_summary, aes(rank, mean_dep)) +
   scale_dep("fill", guide = guide_colourbar(title.position = "top")) +
   scale_x_continuous(breaks = c(1, seq(100, nrow(dep_summary), by = 100)),
                      expand = expansion(mult = 0.02)) +
-  labs(x = "Gene rank", y = "Mean dependency score across cell lines") +
+  labs(x = "Gene rank", y = "Median dependency score across cell lines") +
   theme_panel() +
   theme(
     legend.position      = "top",
@@ -262,8 +273,9 @@ if (file.exists(mra_cache)) {
 
   top_nes  <- names(readRDS(path.expand(paths$top_nes)))
 
-  dep_deg  <- vroom(path.expand(paths$dep_deg), show_col_types = FALSE)
-  genes_hi <- dep_deg %>% filter(median_dep <= DEP_STRONG) %>% pull(gene) %>% unique()
+  # HD-genes: consensus genes with median dependency <= -1 in the 24Q4 ovarian lines
+  core_genes <- rownames(dep$core)
+  genes_hi   <- dep_summary %>% filter(median_dep <= DEP_STRONG) %>% pull(gene) %>% unique()
 
   universe <- unique(unlist(lapply(regulons, function(x) names(x$tfmode))))
   genes_hi <- intersect(genes_hi, universe)
@@ -291,14 +303,17 @@ if (file.exists(mra_cache)) {
 
   mra <- list(
     results = res,
-    tf_dge  = res %>% filter(regulon %in% dep_deg$gene) %>% pull(regulon),
-    n_genes = length(genes_hi)
+    tf_dge  = res %>% filter(regulon %in% core_genes) %>% pull(regulon),
+    n_genes = length(genes_hi),
+    n_hd    = sum(dep_summary$median_dep <= DEP_STRONG, na.rm = TRUE)
   )
 
   saveRDS(mra, mra_cache)
   rm(regulons); gc()
 }
 
+cat("[INFO] HD-genes (median <= ", DEP_STRONG, "): ", mra$n_hd,
+    " | in the regulon universe: ", mra$n_genes, "\n", sep = "")
 cat("[INFO] enriched master regulators:", nrow(mra$results),
     "| also differentially expressed:", length(mra$tf_dge), "\n")
 
@@ -339,7 +354,14 @@ mat_tf <- dep$crispr %>%
   column_to_rownames("gene") %>%
   as.matrix()
 
-mat_tf <- mat_tf[order(rowMeans(mat_tf, na.rm = TRUE)), , drop = FALSE]
+# Drop regulators without a 24Q4 gene effect in most lines (HMGB3:
+# its multi-aligning guides were removed by DepMap)
+na_frac <- rowMeans(is.na(mat_tf))
+if (any(na_frac > 0.5)) cat("[INFO] dropped from panel C (mostly NA):",
+                            names(na_frac)[na_frac > 0.5], "\n")
+mat_tf <- mat_tf[na_frac <= 0.5, , drop = FALSE]
+
+mat_tf <- mat_tf[order(apply(mat_tf, 1, median, na.rm = TRUE)), , drop = FALSE]  # by median, as the HD-genes
 
 # The full CRISPR range is dominated by a few extreme values and
 # flattens the map; the ramp is anchored on the 1st/99th percentiles
@@ -407,7 +429,7 @@ ht <- Heatmap(
 hm_png <- file.path(out_dir, "7_2_Figure3_panelC_heatmap.png")
 
 png(hm_png, width = HM_W, height = HM_H, units = "in", res = 600)
-draw(ht, heatmap_legend_side = "right", padding = unit(c(2, 2, 2, 2), "mm"))
+draw(ht, heatmap_legend_side = "right", padding = unit(c(2, 2, 2, 14), "mm"))
 invisible(dev.off())
 
 p_panelC <- wrap_elements(full = rasterGrob(readPNG(hm_png), interpolate = TRUE))
