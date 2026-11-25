@@ -1,11 +1,11 @@
 #!/usr/bin/env Rscript
 
 # ============================================================
-# Overall survival associated with the 17 transcriptional drivers.
+# Overall survival associated with the candidate transcriptional drivers.
 #
 # The drivers are the master regulators that are enriched in the
 # highly dependent fraction of the consensus signature and are
-# themselves essential in ovarian cancer cell lines (mean CRISPR
+# themselves essential in ovarian cancer cell lines (median CRISPR
 # dependency <= -0.5), i.e. the same set drawn in Figure 4.
 #
 # Every driver is tested on its own, never as a combined score:
@@ -19,7 +19,7 @@
 #   - Median split of the cohort with a log-rank test.
 #
 # A permutation test that keeps the correlation between the drivers
-# intact reports whether the 17 behave as a group or whether the
+# intact reports whether the candidate behave as a group or whether the
 # signal is gene specific.
 #
 # The forest plot reports all of them; the Kaplan-Meier curves are
@@ -69,7 +69,7 @@ col_ns   <- "#9E9E9E"
 read_rds_here <- function(p) readRDS(path.expand(p))
 
 # ============================================================
-# 1) The 17 transcriptional drivers
+# 1) The candidate transcriptional drivers
 # ============================================================
 dep <- read_rds_here(paths$dep_cache)
 mra <- read_rds_here(paths$mra_cache)
@@ -77,9 +77,9 @@ mra <- read_rds_here(paths$mra_cache)
 drivers <- dep$crispr %>%
   filter(gene %in% mra$results$regulon) %>%
   group_by(gene) %>%
-  summarise(mean_dep = mean(dep, na.rm = TRUE), .groups = "drop") %>%
-  filter(mean_dep <= DEP_MR) %>%
-  arrange(mean_dep)
+  summarise(median_dep = median(dep, na.rm = TRUE), .groups = "drop") %>%
+  filter(median_dep <= DEP_MR) %>%
+  arrange(median_dep)
 
 cat("[INFO] transcriptional drivers tested:", nrow(drivers), "\n")
 
@@ -97,7 +97,7 @@ primary_ids <- metadata %>%
   pull(sample.id)
 
 # The annotation of the count matrix predates a few HGNC renames
-gene_aliases <- c(ELOC = "TCEB1")
+gene_aliases <- c(ELOC = "TCEB1", H2AZ1 = "H2AFZ", PHB1 = "PHB")
 
 driver_lookup <- drivers %>%
   transmute(
@@ -130,6 +130,9 @@ immune_raw  <- signature_score(c("PTPRC", "CD3D", "CD3E", "CD2", "CXCL9",
                                  "CXCL10", "TAP1", "GZMB", "IL2RG", "LCK"))
 
 genes_ok <- intersect(drivers$gene, rownames(expr))
+if (length(setdiff(drivers$gene, genes_ok)) > 0)
+  stop("Drivers missing from the expression matrix: ",
+       paste(setdiff(drivers$gene, genes_ok), collapse = ", "))
 cat("[INFO] drivers found in the expression matrix:", length(genes_ok),
     "| primary tumours:", ncol(expr), "\n")
 
@@ -275,9 +278,9 @@ print(as.data.frame(res %>%
   mutate(across(where(is.numeric), ~ signif(.x, 3)))))
 
 # ============================================================
-# 4b) Do the 17 behave as a group?
+# 4b) Do the candidate behave as a group?
 # ============================================================
-# The drivers are co-expressed, so their 17 hazard ratios are not 17
+# The drivers are co-expressed, so their hazard ratios are not
 # independent observations. Permuting the survival labels keeps that
 # correlation intact and gives the honest null for the question of
 # whether the set as a whole leans towards protection.
@@ -315,7 +318,7 @@ pal <- c(
 )
 
 # Only the statistic the conclusion rests on is printed: the hazard
-# ratio and the p value after the correction across the 17 tests
+# ratio and the p value after the correction across the candidate tests
 forest_df <- res %>%
   mutate(
     gene  = factor(gene, levels = rev(res$gene[order(res$HR_per_SD)])),
@@ -403,7 +406,7 @@ km_panel <- function(g) {
   # Each raw p is shown next to the correction of its own family: the
   # log-rank belongs to the median split drawn here, whereas the BH
   # value quoted in the text comes from the continuous Cox models,
-  # which is the test the 17 drivers were screened with
+  # which is the test the candidate drivers were screened with
   fmt_p <- function(p, prefix = "p") {
     ifelse(p < 0.001, paste(prefix, "< 0.001"), sprintf("%s = %.3f", prefix, p))
   }

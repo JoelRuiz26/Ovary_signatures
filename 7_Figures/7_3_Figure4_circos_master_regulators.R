@@ -5,7 +5,7 @@
 #
 # Takes the master regulators that are (i) enriched in the highly
 # dependent fraction of the consensus signature and (ii) themselves
-# essential in ovarian cancer cell lines (mean CRISPR dependency
+# essential in ovarian cancer cell lines (median CRISPR dependency
 # <= -0.5), and draws a chord diagram linking each of them to the
 # highly dependent consensus genes it regulates.
 #
@@ -61,19 +61,20 @@ col_lfc      <- "#3E5C76"   # bars of the expression fold change
 # ============================================================
 # 1) Network: essential master regulators -> dependent targets
 # ============================================================
-if (file.exists(net_cache) && file.mtime(net_cache) > file.mtime(mra_cache)) {
+net_inputs <- path.expand(c(mra_cache, dep_cache, paths$regulons, paths$dep_deg))
+if (file.exists(net_cache) && all(file.mtime(net_cache) > file.mtime(net_inputs))) {
   net <- readRDS(net_cache)
 } else {
   dep <- readRDS(dep_cache)
   mra <- readRDS(mra_cache)
 
-  # Mean dependency of every enriched regulator across the cell lines
+  # Median dependency of every enriched regulator across the cell lines
   mr_dep <- dep$crispr %>%
     filter(gene %in% mra$results$regulon) %>%
     group_by(gene) %>%
-    summarise(mean_dep = mean(dep, na.rm = TRUE), .groups = "drop") %>%
-    filter(mean_dep <= DEP_MR) %>%
-    arrange(mean_dep)
+    summarise(median_dep = median(dep, na.rm = TRUE), .groups = "drop") %>%
+    filter(median_dep <= DEP_MR) %>%
+    arrange(median_dep)
 
   # Consensus genes that are highly dependent, with their fold change
   targets <- vroom(path.expand(paths$dep_deg), show_col_types = FALSE) %>%
@@ -119,10 +120,10 @@ target_order <- net$targets %>%
 
 sector_order <- c(mr_genes, target_order)
 
-# Dependency shown by the ring: the regulators contribute their mean
+# Dependency shown by the ring: the regulators contribute their median
 # across cell lines, the targets their median in the consensus table
 dep_value <- c(
-  setNames(net$mr$mean_dep, net$mr$gene),
+  setNames(net$mr$median_dep, net$mr$gene),
   setNames(net$targets$median_dep, net$targets$gene)[target_order]
 )
 

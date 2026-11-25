@@ -123,7 +123,8 @@ theme_panel <- function(base_size = BASE_SIZE) {
 # ============================================================
 # 1) DepMap CRISPR data for ovarian cancer cell lines (cached)
 # ============================================================
-if (file.exists(dep_cache)) {
+dep_inputs <- c(path.expand(paths$all_genes), file.path(depmap_dir, c("CRISPRGeneEffect.csv", "Model.csv")))
+if (file.exists(dep_cache) && all(file.mtime(dep_cache) > file.mtime(dep_inputs))) {
   dep <- readRDS(dep_cache)
 } else {
   # Significant in all three sources; direction by agreement of >= 2 of 3 (646 genes)
@@ -261,9 +262,9 @@ p_panelA <- wrap_elements(full = p_rank +
 # ============================================================
 # 3) PANEL B | Master regulators enriched in dependent genes
 # ============================================================
-# The cache is reused only if it is newer than the MRA table, the regulons
-# and the elbow selection it was computed from.
-mra_inputs <- path.expand(unlist(paths[c("mra_tsv", "regulons", "top_nes")]))
+# The cache is reused only if it is newer than the MRA table, the regulons,
+# the elbow selection and the dependency cache it was computed from.
+mra_inputs <- c(path.expand(unlist(paths[c("mra_tsv", "regulons", "top_nes")])), dep_cache)
 if (file.exists(mra_cache) && all(file.mtime(mra_cache) > file.mtime(mra_inputs))) {
   mra <- readRDS(mra_cache)
 } else {

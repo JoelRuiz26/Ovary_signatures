@@ -568,7 +568,8 @@ head(signature_core)
 # Network parameters: 300 bootstraps, MI p-value threshold = 1e-8
 network_file <- file.path(BASE, "5_MRA/cancer_ovary_network_300bt_p1e-8.txt")
 regulon_file <- file.path(BASE, "5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
-if (file.exists(regulon_file)) {
+# The cached regulon is reused only if it is newer than the network
+if (file.exists(regulon_file) && file.mtime(regulon_file) > file.mtime(network_file)) {
   regulon <- readRDS(regulon_file)
 } else {
   eset_tbl <- vroom::vroom(file.path(BASE, "5_MRA/ov_tcga_vst.tsv"), show_col_types = FALSE)
