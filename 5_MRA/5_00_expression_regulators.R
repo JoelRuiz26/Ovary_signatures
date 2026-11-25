@@ -117,9 +117,11 @@ bio_vec <- setNames(gene_map$gene_biotype, gene_map$ensembl_gene_id)[ens_clean]
 
 keep <- !is.na(sym_vec) & sym_vec != "" & bio_vec %in% c("protein_coding", "lncRNA", "miRNA")
 
-# NOTE: the values are summed as stored by Xena, i.e. log2(expected_count + 1),
-# without back-transforming to counts. This is what the submitted analysis did.
-expr_by_symbol <- rowsum(exprs_matrix[keep, , drop = FALSE], group = sym_vec[keep], reorder = FALSE)
+# Xena stores log2(expected_count + 1): back-transform to counts before
+# collapsing Ensembl ids to gene symbols.
+counts_by_symbol <- rowsum(2^exprs_matrix[keep, , drop = FALSE] - 1,
+                           group = sym_vec[keep], reorder = FALSE)
+counts_by_symbol[counts_by_symbol < 0] <- 0
 
 
 # -----------------------------------------------------------------------------
@@ -128,7 +130,7 @@ expr_by_symbol <- rowsum(exprs_matrix[keep, , drop = FALSE], group = sym_vec[kee
 
 # VST is fitted on tumors and GTEx ovary together (blind to the design);
 # only the tumor columns are written for network inference.
-dds <- DESeqDataSetFromMatrix(round(expr_by_symbol), pheno_df, design = ~ group)
+dds <- DESeqDataSetFromMatrix(round(counts_by_symbol), pheno_df, design = ~ group)
 dds <- estimateSizeFactors(dds)
 expr_vst <- assay(vst(dds, blind = TRUE))
 

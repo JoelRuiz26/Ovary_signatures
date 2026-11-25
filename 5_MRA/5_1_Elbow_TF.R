@@ -26,30 +26,35 @@ TF_list <- vroom(
 # core genes
 core_list <- full_genes %>%
   pull(gene)
-length(core_list) #[1] 648
+length(core_list)
 
 # TF MRA
 df <- TF_list %>%
   filter(padj_emp < 0.05) %>%
   mutate(abs_NES = abs(NES)) %>%
-  arrange(rank_abs_NES)
-df_NES2 <- df %>% filter(abs_NES >= 2)
+  arrange(desc(abs_NES)) %>%
+  mutate(rank_sig = row_number())   # rank among significant regulators
 
 # ------------------------------------------------------------
-# a) Filter by elbow method 
+# a) Filter by elbow method
 # ------------------------------------------------------------
-# Elbow method
-distances <- abs((df$abs_NES[nrow(df)] - df$abs_NES[1]) * df$rank_abs_NES -
-                   (df$rank_abs_NES[nrow(df)] - df$rank_abs_NES[1]) * df$abs_NES +
-                   df$rank_abs_NES[nrow(df)] * df$abs_NES[1] -
-                   df$abs_NES[nrow(df)] * df$rank_abs_NES[1]) /
-  sqrt((df$abs_NES[nrow(df)] - df$abs_NES[1])^2 +
-         (df$rank_abs_NES[nrow(df)] - df$rank_abs_NES[1])^2)
+# Elbow of the |NES| curve of the significant regulators: point farthest from
+# the chord between the first and the last one. The rank is taken within the
+# significant set, so the cut does not depend on where the last significant
+# regulator falls in the ranking of all tested regulators.
+n_sig <- nrow(df)
+distances <- abs((df$abs_NES[n_sig] - df$abs_NES[1]) * df$rank_sig -
+                   (n_sig - 1) * df$abs_NES +
+                   n_sig * df$abs_NES[1] - df$abs_NES[n_sig]) /
+  sqrt((df$abs_NES[n_sig] - df$abs_NES[1])^2 + (n_sig - 1)^2)
 
-elbow_idx <- which.max(distances) #[1] 68
+elbow_idx <- which.max(distances)
 elbow_point <- df[elbow_idx, ]
+message("Significant regulators: ", n_sig, " | elbow: ", elbow_idx,
+        " (", sum(df$NES[seq_len(elbow_idx)] > 0), " activated, ",
+        sum(df$NES[seq_len(elbow_idx)] < 0), " repressed)")
 
-p_elbow <- ggplot(df, aes(rank_abs_NES, abs_NES)) +
+p_elbow <- ggplot(df, aes(rank_sig, abs_NES)) +
   geom_line(color = "black", linewidth = 0.7) +
   
   # zona seleccionada (core regulons)
@@ -67,7 +72,7 @@ p_elbow <- ggplot(df, aes(rank_abs_NES, abs_NES)) +
             aes(label = elbow_idx),
             vjust = -1, size = 3.5, color = "black") +
   
-  labs(x = "Rank", y = "|NES|") +
+  labs(x = "Rank among significant regulators", y = "|NES|") +
   theme_minimal(base_size = 11) +
   theme(
     panel.grid.minor = element_blank(),
@@ -79,7 +84,7 @@ p_elbow
 
 # Gene Name symbol
 tf_names <- df %>%
-  filter(rank_abs_NES <= elbow_point$rank_abs_NES) %>%
+  filter(rank_sig <= elbow_idx) %>%
   mutate(TF = toupper(TF)) %>% 
   dplyr::select(TF, NES, direction) %>% as.data.frame()
 
@@ -91,7 +96,7 @@ tf_names <- tf_names%>%
   pull(TF) %>%
   unique()
 
-length(tf_names) #328
+length(tf_names)
 
 
 #Gene enbl

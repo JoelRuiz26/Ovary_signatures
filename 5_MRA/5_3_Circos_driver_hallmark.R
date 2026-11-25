@@ -144,17 +144,19 @@ MIN_DRIVERS_PER_TERM <- 1   # SECONDARY declutter knob (applied after the
                         # cross-driver programs -- use this if the term side
                         # of the circle looks cluttered with one-off sectors.
 
-## ---- 2. The 17 prioritized drivers, grouped into functional modules -------
+## ---- 2. The candidate drivers, grouped into functional modules ------------
 # (as described in Results 5.3 / Discussion of the manuscript; IDENTICAL to
 # 5_2_Circos_regulon_overlap.R -- see the resolved open question in the
 # header above)
 
 modules <- list(
-  "G2/M & mitosis"           = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1"),
-  "DNA-damage checkpoint"    = c("CHEK1", "TIMELESS"),
-  "Chromatin / centromere"   = c("ACTL6A", "CENPA"),
-  "Survival / apoptosis"     = c("BIRC5"),
-  "Underexplored"            = c("KCMF1", "GMNN", "WDHD1", "ELOC", "CHAF1B")
+  "G2/M & mitosis"            = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1", "RAN"),
+  "DNA-damage checkpoint"     = c("CHEK1", "TIMELESS"),
+  "Chromatin / centromere"    = c("ACTL6A", "CENPA", "H2AZ1", "RBBP4", "DNMT1", "MCRS1"),
+  "Transcription / RNA"       = c("GTF2E1", "TAF5", "TTF2", "SRSF2", "ILF2"),
+  "Chaperones / mitochondria" = c("HSPA8", "PHB1"),
+  "Survival / apoptosis"      = c("BIRC5"),
+  "Underexplored"             = c("GMNN", "WDHD1", "CHAF1B", "ZNF492")
 )
 
 driver_module <- as_tibble(stack(modules)) |>
@@ -162,14 +164,16 @@ driver_module <- as_tibble(stack(modules)) |>
   mutate(gene = as.character(gene), module = as.character(module))
 
 drivers <- driver_module$gene
-stopifnot(length(drivers) == 16, length(unique(drivers)) == 16)
+stopifnot(!anyDuplicated(drivers))
 
 module_colors <- c(
-  "G2/M & mitosis"         = "#1B9E77",
-  "DNA-damage checkpoint"  = "#D95F02",
-  "Chromatin / centromere" = "#7570B3",
-  "Survival / apoptosis"   = "#66A61E",
-  "Underexplored"          = "#999999"
+  "G2/M & mitosis"            = "#1B9E77",
+  "DNA-damage checkpoint"     = "#D95F02",
+  "Chromatin / centromere"    = "#7570B3",
+  "Transcription / RNA"       = "#E7298A",
+  "Chaperones / mitochondria" = "#E6AB02",
+  "Survival / apoptosis"      = "#66A61E",
+  "Underexplored"             = "#999999"
 )
 
 TERM_SECTOR_COLOR <- "#F0F0F0"   # neutral fill for Hallmark-term sectors --

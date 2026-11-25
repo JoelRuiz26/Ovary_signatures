@@ -261,7 +261,10 @@ p_panelA <- wrap_elements(full = p_rank +
 # ============================================================
 # 3) PANEL B | Master regulators enriched in dependent genes
 # ============================================================
-if (file.exists(mra_cache)) {
+# The cache is reused only if it is newer than the MRA table, the regulons
+# and the elbow selection it was computed from.
+mra_inputs <- path.expand(unlist(paths[c("mra_tsv", "regulons", "top_nes")]))
+if (file.exists(mra_cache) && all(file.mtime(mra_cache) > file.mtime(mra_inputs))) {
   mra <- readRDS(mra_cache)
 } else {
   sig_tf <- vroom(path.expand(paths$mra_tsv), show_col_types = FALSE) %>%
@@ -312,6 +315,9 @@ if (file.exists(mra_cache)) {
   rm(regulons); gc()
 }
 
+# Row labels were sized for 46 regulators; shrink them when there are more
+lab_scale <- min(1, 46 / nrow(mra$results))
+
 cat("[INFO] HD-genes (median <= ", DEP_STRONG, "): ", mra$n_hd,
     " | in the regulon universe: ", mra$n_genes, "\n", sep = "")
 cat("[INFO] enriched master regulators:", nrow(mra$results),
@@ -331,7 +337,7 @@ p_panelB <- ggplot(mra_df, aes(x = overlap, y = regulon, fill = log10_p)) +
   labs(x = "Genes shared with the highly dependent set", y = NULL) +
   theme_panel() +
   theme(
-    axis.text.y          = element_text(size = BASE_SIZE - 5, face = mra_face,
+    axis.text.y          = element_text(size = (BASE_SIZE - 5) * lab_scale, face = mra_face,
                                         colour = "grey10"),
     axis.text.x          = element_text(size = BASE_SIZE - 3),
     panel.grid.major.x   = element_line(colour = "grey90", linewidth = 0.3),
@@ -405,7 +411,7 @@ ht <- Heatmap(
   cluster_rows    = FALSE,
   cluster_columns = TRUE,
   show_row_names  = TRUE,
-  row_names_gp    = gpar(fontsize = BASE_SIZE - 2, fontface = row_face),
+  row_names_gp    = gpar(fontsize = (BASE_SIZE - 2) * lab_scale, fontface = row_face),
   row_names_side  = "left",
   left_annotation = row_anno,
   show_column_names   = TRUE,

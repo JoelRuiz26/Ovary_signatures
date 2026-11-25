@@ -61,7 +61,7 @@ col_lfc      <- "#3E5C76"   # bars of the expression fold change
 # ============================================================
 # 1) Network: essential master regulators -> dependent targets
 # ============================================================
-if (file.exists(net_cache)) {
+if (file.exists(net_cache) && file.mtime(net_cache) > file.mtime(mra_cache)) {
   net <- readRDS(net_cache)
 } else {
   dep <- readRDS(dep_cache)
