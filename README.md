@@ -57,6 +57,8 @@ Other variables: `OCTAD_H5` (path to `octad.counts.and.tpm.h5`), `DEPMAP_DIR` (d
 | 14 | `7_Figures/7_1_…`, `7_2_…`, `7_3_…` | assembled manuscript figures (`7_3` reads the caches written by `7_2`) |
 | 15 | `8_Survival_analysis/8_0_Clinical_metadata.R` → `8_1_Cox_drivers_survival.R` | TCGA-OV clinical table, Cox models (`8_1` reads the caches written by `7_2`) |
 
+Step 8 reads the gene annotation from the dictionaries frozen in `5_MRA/annotation/` (Ensembl release 115; each file records release and date in its header), so it does not depend on the Ensembl servers; delete a dictionary to rebuild it with biomaRt. With these inputs `5_00` writes a matrix that is byte-identical to the one used for the network, and an ARACNe-AP bootstrap run with the same seed reproduces the corresponding bootstrap file of the original run. `aracneap.sh` must be run from `$OVARY_SIGNATURES/5_MRA`.
+
 Steps 9 and 10 are the expensive ones: the network takes about 6.5 h with 50 threads, and 10,000 permutations of msVIPER take a few minutes per signature with 55 workers. The permutation null of `5_0` uses one seed per permutation, so the result does not depend on the number of workers.
 
 ## Dependencies

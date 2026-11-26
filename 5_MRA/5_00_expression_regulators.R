@@ -21,9 +21,11 @@
 #   modulators_all_tf_tfc_mirna.txt      regulators for ARACNe-AP
 #   onlyTFs.txt                          TFs with a known motif
 #
-# Gene annotation comes from Ensembl through biomaRt, release 115 (the one
-# used for the network of the manuscript). ENSEMBL_VERSION selects another
-# release, which changes a few hundred gene symbols and biotypes.
+# Gene annotation is read from the dictionaries frozen in 5_MRA/annotation/
+# (Ensembl release 115, the one used for the network of the manuscript; the
+# header of each file records release and date). If a dictionary is missing
+# it is rebuilt from Ensembl through biomaRt; ENSEMBL_VERSION selects the
+# release, and another release changes a few hundred symbols and biotypes.
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -40,6 +42,36 @@ XENA    <- file.path(BASE, "data/xena")
 REG_DIR <- file.path(BASE, "data/regulators")
 OUT_DIR <- Sys.getenv("MRA_OUTDIR", file.path(BASE, "5_MRA"))
 ENSEMBL_VERSION <- Sys.getenv("ENSEMBL_VERSION", "115")
+
+# Folder of this script, to find the frozen annotation next to it
+script_file <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
+script_dir  <- if (length(script_file)) dirname(normalizePath(script_file)) else "5_MRA"
+ANNOT_DIR   <- Sys.getenv("ENSEMBL_ANNOT_DIR", file.path(script_dir, "annotation"))
+
+# Read a frozen Ensembl dictionary, or build it with biomaRt and freeze it
+ensembl_dictionary <- function(name, attributes, ids) {
+  f <- file.path(ANNOT_DIR, sprintf("ensembl%s_%s.tsv.gz", ENSEMBL_VERSION, name))
+  if (file.exists(f)) {
+    return(read.delim(f, comment.char = "#", colClasses = "character", na.strings = character()))
+  }
+  message("Dictionary not found, querying Ensembl ", ENSEMBL_VERSION, ": ", f)
+  mart <- if (nzchar(ENSEMBL_VERSION)) {
+    useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl", version = as.integer(ENSEMBL_VERSION))
+  } else {
+    useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+  }
+  d <- getBM(attributes = attributes, filters = "ensembl_gene_id", values = unique(ids), mart = mart)
+  d[] <- lapply(d, as.character)
+  dir.create(ANNOT_DIR, recursive = TRUE, showWarnings = FALSE)
+  con <- gzfile(f, "w")
+  writeLines(c(paste0("# Ensembl release ", ENSEMBL_VERSION, ", dataset hsapiens_gene_ensembl, retrieved with biomaRt::getBM"),
+               paste0("# Created ", format(Sys.Date()), " by 5_MRA/5_00_expression_regulators.R"),
+               paste0("# Query: ", length(unique(ids)), " Ensembl gene ids (", name, "); rows in the order returned by the server")),
+             con)
+  write.table(d, con, sep = "\t", quote = FALSE, row.names = FALSE)
+  close(con)
+  d
+}
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 40)
@@ -103,16 +135,10 @@ message("Samples: ", paste(names(table(pheno_df$group)), table(pheno_df$group), 
 
 ens_clean <- sub("\\..*", "", rownames(exprs_matrix))
 
-mart <- if (nzchar(ENSEMBL_VERSION)) {
-  useEnsembl("ensembl", dataset = "hsapiens_gene_ensembl", version = as.integer(ENSEMBL_VERSION))
-} else {
-  useMart("ensembl", dataset = "hsapiens_gene_ensembl")
-}
-gene_map <- getBM(
-  attributes = c("ensembl_gene_id", "hgnc_symbol", "gene_biotype", "chromosome_name"),
-  filters    = "ensembl_gene_id",
-  values     = unique(ens_clean),
-  mart       = mart
+gene_map <- ensembl_dictionary(
+  "xena_genes",
+  c("ensembl_gene_id", "hgnc_symbol", "gene_biotype", "chromosome_name"),
+  ens_clean
 )
 
 sym_vec <- setNames(gene_map$hgnc_symbol,  gene_map$ensembl_gene_id)[ens_clean]
@@ -163,8 +189,7 @@ lambert_symbols <- lambert %>%
 # 5.3 AnimalTFDB: cofactors by symbol, TFs by Ensembl id mapped to current symbol
 tfcs  <- read.delim(file.path(REG_DIR, "Homo_sapiens_Cof.txt"))$Symbol
 tfs_e <- read.delim(file.path(REG_DIR, "Homo_sapiens_TF.txt"))$Ensembl
-tfs_map <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
-                 filters = "ensembl_gene_id", values = unique(tfs_e), mart = mart)
+tfs_map <- ensembl_dictionary("animaltfdb_tfs", c("ensembl_gene_id", "hgnc_symbol"), tfs_e)
 tfs_map <- tfs_map[order(match(tfs_map$ensembl_gene_id, tfs_e), tfs_map$hgnc_symbol), ]
 tfs <- tfs_map$hgnc_symbol[tfs_map$hgnc_symbol != ""]
 
