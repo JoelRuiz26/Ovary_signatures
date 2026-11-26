@@ -34,7 +34,8 @@ query <- GDCquery(
   data.format   = "bcr xml"
 )
 
-GDCdownload(query, directory = gdc_dir)
+# in chunks: a single request for the ~590 files is rejected by the GDC API
+GDCdownload(query, directory = gdc_dir, files.per.chunk = 50)
 
 clinical_patient  <- GDCprepare_clinic(query, "patient",   directory = gdc_dir)
 clinical_followup <- GDCprepare_clinic(query, "follow_up", directory = gdc_dir)

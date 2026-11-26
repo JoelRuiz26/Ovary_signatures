@@ -493,6 +493,11 @@ km_panel <- function(g) {
   p_curve / p_risk + plot_layout(heights = c(4.2, 1))
 }
 
+# Kaplan-Meier figure only when at least one driver passes the BH threshold
+if (length(km_genes) == 0) {
+  cat("[INFO] no driver is significant after BH correction; Kaplan-Meier figure not drawn\n")
+  unlink(file.path(path.expand(out_dir), paste0("8_1_2_KM_significant_drivers.", c("pdf", "png"))))
+} else {
 km_panels <- map(km_genes, km_panel)
 
 figure_km <- wrap_plots(km_panels, nrow = 1) +
@@ -507,3 +512,4 @@ ggsave(file.path(path.expand(out_dir), "8_1_2_KM_significant_drivers.png"),
        figure_km, width = km_w, height = 7.2, dpi = 400, bg = "white")
 
 message("Survival analysis saved to: ", out_dir)
+}
