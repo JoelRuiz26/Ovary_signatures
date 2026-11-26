@@ -123,10 +123,12 @@ theme_panel <- function(base_size = BASE_SIZE) {
 # ============================================================
 # 1) DepMap CRISPR data for ovarian cancer cell lines (cached)
 # ============================================================
-dep_inputs <- c(path.expand(paths$all_genes), file.path(depmap_dir, c("CRISPRGeneEffect.csv", "Model.csv")))
-if (file.exists(dep_cache) && all(file.mtime(dep_cache) > file.mtime(dep_inputs))) {
-  dep <- readRDS(dep_cache)
-} else {
+expr_file  <- file.path(depmap_dir, "OmicsExpressionProteinCodingGenesTPMLogp1.csv")
+dep_inputs <- c(path.expand(paths$all_genes), expr_file,
+                file.path(depmap_dir, c("CRISPRGeneEffect.csv", "Model.csv")))
+dep <- if (file.exists(dep_cache) && all(file.mtime(dep_cache) > file.mtime(dep_inputs))) readRDS(dep_cache)
+# a cache written before the expression filter existed is rebuilt
+if (is.null(dep$expr_tpm)) {
   # Significant in all three sources; direction by agreement of >= 2 of 3 (646 genes)
   cons_genes <- vroom(path.expand(paths$all_genes), show_col_types = FALSE) %>%
     filter(n_sources == 3) %>%
@@ -148,6 +150,17 @@ if (file.exists(dep_cache) && all(file.mtime(dep_cache) > file.mtime(dep_inputs)
     mutate(gene = toupper(sub(" \\(\\d+\\)$", "", gene)))
   rm(gene_effect)
 
+  # Median expression (TPM) of every gene in the ovarian lines with CRISPR data.
+  # A gene scored as a dependency without being expressed is a screening
+  # artefact (e.g. guides cutting several paralogs), see 7_3 and 8_1.
+  expr <- vroom(expr_file, show_col_types = FALSE)
+  names(expr)[1] <- "depmap_id"
+  expr <- inner_join(expr, ovary_lines, by = "depmap_id")
+  expr <- expr[expr$cell %in% crispr$cell, ]
+  expr_tpm <- 2^apply(as.matrix(expr[, setdiff(names(expr), c("depmap_id", "cell"))]), 2, median) - 1
+  names(expr_tpm) <- toupper(sub(" \\(\\d+\\)$", "", names(expr_tpm)))
+  rm(expr)
+
   to_matrix <- function(df) {
     df %>%
       distinct() %>%
@@ -160,7 +173,8 @@ if (file.exists(dep_cache) && all(file.mtime(dep_cache) > file.mtime(dep_inputs)
     core      = to_matrix(filter(crispr, gene %in% cons_genes$gene_u)),
     all_genes = sort(unique(crispr$gene)),
     range     = range(crispr$dep, na.rm = TRUE),
-    crispr    = crispr
+    crispr    = crispr,
+    expr_tpm  = expr_tpm
   )
 
   saveRDS(dep, dep_cache)
@@ -281,7 +295,10 @@ if (file.exists(mra_cache) && all(file.mtime(mra_cache) > file.mtime(mra_inputs)
   core_genes <- rownames(dep$core)
   genes_hi   <- dep_summary %>% filter(median_dep <= DEP_STRONG) %>% pull(gene) %>% unique()
 
-  universe <- unique(unlist(lapply(regulons, function(x) names(x$tfmode))))
+  # Background: consensus genes with dependency data that are regulon targets
+  # (HD-genes can only come from the consensus signature)
+  universe <- intersect(unique(dep_summary$gene),
+                        unique(unlist(lapply(regulons, function(x) names(x$tfmode)))))
   genes_hi <- intersect(genes_hi, universe)
 
   # One-sided Fisher exact test per regulon

@@ -33,8 +33,8 @@
 # Settings (environment variables):
 #   OVARY_SIGNATURES  data root (default ~/Ovary_signatures)
 #   MRA_OUTDIR        output folder (default BASE/5_MRA)
-#   MRA_SIGNATURE     "centered" (default; analysis as submitted) or "raw"
-#   MRA_KNEE          "submitted" (default), "fixed" or "none"
+#   MRA_SIGNATURE     "raw" (default) or "centered" (analysis as submitted)
+#   MRA_KNEE          "none" (default), "fixed" or "submitted"
 #   MRA_NPERM         permutations of the null model (default 10000)
 #   MRA_CORES         parallel workers (default: half of the cores minus one)
 #   MRA_SINGLE_SOURCE "TRUE" (default) also runs the AE-only and GTEx-only signatures
@@ -67,8 +67,8 @@ BASE    <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data 
 OUT_DIR <- Sys.getenv("MRA_OUTDIR", file.path(BASE, "5_MRA"))
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
-SIGNATURE_MODE <- match.arg(Sys.getenv("MRA_SIGNATURE", "centered"), c("centered", "raw"))
-KNEE_MODE      <- match.arg(Sys.getenv("MRA_KNEE", "submitted"), c("submitted", "fixed", "none"))
+SIGNATURE_MODE <- match.arg(Sys.getenv("MRA_SIGNATURE", "raw"), c("raw", "centered"))
+KNEE_MODE      <- match.arg(Sys.getenv("MRA_KNEE", "none"), c("none", "fixed", "submitted"))
 N_PERM         <- as.integer(Sys.getenv("MRA_NPERM", "10000"))
 N_CORES        <- as.integer(Sys.getenv("MRA_CORES", max(1, parallel::detectCores() %/% 2 - 1)))
 RUN_SINGLE     <- as.logical(Sys.getenv("MRA_SINGLE_SOURCE", "TRUE"))

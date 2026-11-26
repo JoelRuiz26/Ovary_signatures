@@ -169,7 +169,21 @@ grid.newpage(); draw(ht, heatmap_legend_side="right"); dev.off()
 resultado <- data.frame(gene = rownames(mat), media = rowMeans(mat, na.rm = TRUE), 
                         mediana = apply(mat, 1, median, na.rm = TRUE)) %>% arrange(desc(media))
 
-median <- resultado %>% filter(mediana <= -0.5) %>% pull(gene)
+# Candidate regulators: median dependency <= -0.5 and expressed (median TPM >= 1)
+# in the same cell lines. Without expression the gene effect is a screening
+# artefact (ZNF492: guides shared with paralogs of the chr19 cluster).
+expr <- vroom(file.path(DEPMAP_DIR, "OmicsExpressionProteinCodingGenesTPMLogp1.csv"), show_col_types = FALSE)
+names(expr)[1] <- "depmap_id"
+expr <- expr[expr$depmap_id %in% crispr_ovary_all$depmap_id, ]
+expr_tpm <- 2^apply(as.matrix(expr[, -1]), 2, median) - 1
+names(expr_tpm) <- toupper(sub(" \\(\\d+\\)$", "", names(expr_tpm)))
+
+resultado$median_tpm <- expr_tpm[resultado$gene]
+resultado$candidate  <- resultado$mediana <= -0.5 & !is.na(resultado$median_tpm) & resultado$median_tpm >= 1
+write.table(resultado %>% arrange(mediana), paste0(BASE, "/6_Depmap_ovary/6_3_2_candidate_regulators.tsv"),
+            sep = "\t", quote = FALSE, row.names = FALSE)
+median <- resultado %>% filter(candidate) %>% pull(gene)
+cat("Candidate regulators:", length(median), "\n", paste(sort(median), collapse = ", "), "\n")
 
 
 

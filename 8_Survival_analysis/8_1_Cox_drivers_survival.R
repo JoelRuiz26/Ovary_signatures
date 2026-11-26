@@ -59,6 +59,7 @@ paths <- list(
 )
 
 DEP_MR  <- -0.5    # essentiality threshold that defines the drivers
+MIN_TPM <- 1       # median expression required in the same cell lines
 P_SIG   <- 0.05
 
 BASE_SIZE <- 15
@@ -73,12 +74,14 @@ read_rds_here <- function(p) readRDS(path.expand(p))
 # ============================================================
 dep <- read_rds_here(paths$dep_cache)
 mra <- read_rds_here(paths$mra_cache)
+stopifnot("rerun 7_2: the dependency cache has no expression data" = !is.null(dep$expr_tpm))
 
 drivers <- dep$crispr %>%
   filter(gene %in% mra$results$regulon) %>%
   group_by(gene) %>%
   summarise(median_dep = median(dep, na.rm = TRUE), .groups = "drop") %>%
   filter(median_dep <= DEP_MR) %>%
+  filter(gene %in% names(dep$expr_tpm)[dep$expr_tpm >= MIN_TPM]) %>%
   arrange(median_dep)
 
 cat("[INFO] transcriptional drivers tested:", nrow(drivers), "\n")

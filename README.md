@@ -11,8 +11,8 @@ The workflow has three layers: (1) a consensus differential-expression signature
 ## Results in brief
 
 - Consensus signature: 646 genes significant in the three sources (419 up, 227 down; direction by agreement of at least two sources).
-- Master regulators: 2,622 regulons tested, 1,678 significant (BH-adjusted empirical p < 0.05); 239 above the elbow of the |NES| curve.
-- DepMap 24Q4, 58 ovarian epithelial tumor lines: 65 consensus genes with median gene effect ≤ −1; 74 regulators enriched in them; 27 candidate drivers that are themselves dependencies (median gene effect ≤ −0.5): ACTL6A, AURKB, BIRC5, CCNA2, CDK1, CDK2, CENPA, CHAF1B, CHEK1, DNMT1, GMNN, GTF2E1, H2AZ1, HSPA8, ILF2, MCRS1, PHB1, PLK1, PTTG1, RAN, RBBP4, SRSF2, TAF5, TIMELESS, TTF2, WDHD1, ZNF492.
+- Master regulators: 2,385 regulons tested, 1,371 significant (BH-adjusted empirical p < 0.05); 188 above the elbow of the |NES| curve.
+- DepMap 24Q4, 58 ovarian epithelial tumor lines: 65 consensus genes with median gene effect ≤ −1; 54 regulators enriched in them (Fisher test against the consensus genes with dependency data); 16 candidate regulators that are themselves dependencies (median gene effect ≤ −0.5) and expressed in the same lines (median TPM ≥ 1): ACTL6A, AURKB, BIRC5, CCNA2, CDK1, CDK2, CENPA, CHAF1B, CHEK1, GMNN, H2AZ1, PLK1, PTTG1, SRSF2, TAF5, WDHD1.
 
 ## Layout and paths
 
@@ -34,7 +34,7 @@ Other variables: `OCTAD_H5` (path to `octad.counts.and.tpm.h5`), `DEPMAP_DIR` (d
 | `TcgaTargetGtex_gene_expected_count.gz`, `TcgaTargetGTEX_phenotype.txt.gz` | `5_00` | UCSC Xena Toil hub, `https://toil.xenahubs.net/download/` → `data/xena/` |
 | `Homo_sapiens_TF.txt`, `Homo_sapiens_Cof.txt` | `5_00` | AnimalTFDB → `data/regulators/` |
 | `DatabaseExtract_v_1.01.txt` | `5_00` | Lambert et al. 2018, `https://humantfs.ccbr.utoronto.ca/download.php` → `data/regulators/` |
-| `CRISPRGeneEffect.csv`, `Model.csv` | `6_*`, `7_2` | DepMap Public 24Q4, `https://depmap.org/portal/data_page/` → `data/depmap_24Q4/` |
+| `CRISPRGeneEffect.csv`, `Model.csv`, `OmicsExpressionProteinCodingGenesTPMLogp1.csv` | `6_*`, `7_2` | DepMap Public 24Q4, `https://depmap.org/portal/data_page/` → `data/depmap_24Q4/` |
 | ARACNe-AP (`aracne.jar`) | `5_MRA/aracneap.sh` | `https://github.com/califano-lab/ARACNe-AP` |
 
 ## Order of execution

@@ -55,8 +55,11 @@ genes_interest <- unique(df_filtered$gene) #65
 # 3) Define universe (genes present in regulons)
 # ============================================================
 
-all_genes <- unique(unlist(lapply(regulons_filtered, function(x) names(x$tfmode))))
-length(all_genes) #22009
+# HD-genes can only come from the consensus signature, so the background of
+# the test is the consensus genes with dependency data that are regulon targets
+all_targets <- unique(unlist(lapply(regulons_filtered, function(x) names(x$tfmode))))
+all_genes <- intersect(unique(df$gene), all_targets)
+length(all_genes) #609
 
 # Ensure proper intersection
 genes_interest <- intersect(genes_interest, all_genes) 

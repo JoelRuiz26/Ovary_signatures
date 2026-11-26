@@ -150,13 +150,12 @@ MIN_DRIVERS_PER_TERM <- 1   # SECONDARY declutter knob (applied after the
 # header above)
 
 modules <- list(
-  "G2/M & mitosis"            = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1", "RAN"),
-  "DNA-damage checkpoint"     = c("CHEK1", "TIMELESS"),
-  "Chromatin / centromere"    = c("ACTL6A", "CENPA", "H2AZ1", "RBBP4", "DNMT1", "MCRS1"),
-  "Transcription / RNA"       = c("GTF2E1", "TAF5", "TTF2", "SRSF2", "ILF2"),
-  "Chaperones / mitochondria" = c("HSPA8", "PHB1"),
+  "G2/M & mitosis"            = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1"),
+  "DNA-damage checkpoint"     = c("CHEK1"),
+  "Chromatin / centromere"    = c("ACTL6A", "CENPA", "H2AZ1"),
+  "Transcription / RNA"       = c("TAF5", "SRSF2"),
   "Survival / apoptosis"      = c("BIRC5"),
-  "Underexplored"             = c("GMNN", "WDHD1", "CHAF1B", "ZNF492")
+  "Underexplored"             = c("GMNN", "WDHD1", "CHAF1B")
 )
 
 driver_module <- as_tibble(stack(modules)) |>
@@ -171,7 +170,6 @@ module_colors <- c(
   "DNA-damage checkpoint"     = "#D95F02",
   "Chromatin / centromere"    = "#7570B3",
   "Transcription / RNA"       = "#E7298A",
-  "Chaperones / mitochondria" = "#E6AB02",
   "Survival / apoptosis"      = "#66A61E",
   "Underexplored"             = "#999999"
 )

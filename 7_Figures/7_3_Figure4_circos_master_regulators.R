@@ -39,6 +39,7 @@ mra_cache <- file.path(out_dir, "7_2_mra_enrichment_24Q4_646_cache.rds")
 net_cache <- file.path(out_dir, "7_3_circos_network_cache.rds")
 
 DEP_MR     <- -0.5   # essentiality threshold applied to the regulators
+MIN_TPM    <- 1      # median expression required in the same cell lines
 DEP_TARGET <- -1     # highly dependent consensus genes used as targets
 
 FIG_W <- 14.2        # inches
@@ -67,13 +68,15 @@ if (file.exists(net_cache) && all(file.mtime(net_cache) > file.mtime(net_inputs)
 } else {
   dep <- readRDS(dep_cache)
   mra <- readRDS(mra_cache)
+  stopifnot("rerun 7_2: the dependency cache has no expression data" = !is.null(dep$expr_tpm))
 
   # Median dependency of every enriched regulator across the cell lines
   mr_dep <- dep$crispr %>%
     filter(gene %in% mra$results$regulon) %>%
     group_by(gene) %>%
     summarise(median_dep = median(dep, na.rm = TRUE), .groups = "drop") %>%
-    filter(median_dep <= DEP_MR) %>%
+filter(median_dep <= DEP_MR) %>%
+    filter(gene %in% names(dep$expr_tpm)[dep$expr_tpm >= MIN_TPM]) %>%
     arrange(median_dep)
 
   # Consensus genes that are highly dependent, with their fold change
