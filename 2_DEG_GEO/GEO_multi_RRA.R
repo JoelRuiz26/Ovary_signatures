@@ -1,3 +1,9 @@
+# Folder of this script, to find the frozen probe annotation next to it
+script_file <- sub("^--file=", "", grep("^--file=", commandArgs(FALSE), value = TRUE))
+script_dir  <- if (length(script_file)) dirname(normalizePath(script_file)) else getwd()
+# Probe -> HGNC symbol dictionary of GPL570 frozen from g:Profiler (version and
+# date in the file header). Delete the file to rebuild it from the live server.
+PROBE_DICT <- Sys.getenv("GEO_PROBE_DICT", file.path(script_dir, "annotation/gprofiler_GPL570_probe_to_hgnc.tsv.gz"))
 setwd(file.path(Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures"), "2_DEG_GEO"))
 
 ## ============================================================
@@ -457,11 +463,17 @@ limma_de_all <- function(eset_list,
 ## ============================================================
 add_gene_symbol_with_gconvert_safe <- function(de_list,
                                                id_col   = "ID",
-                                               organism = "hsapiens") {
+                                               organism = "hsapiens",
+                                               dict_file = PROBE_DICT) {
   stopifnot(is.list(de_list))
-  if (!requireNamespace("gprofiler2", quietly = TRUE)) {
-    stop("Instala 'gprofiler2' primero.")
+  dict <- if (file.exists(dict_file)) {
+    read.delim(dict_file, comment.char = "#", colClasses = "character", na.strings = "NA")
+  } else {
+    if (!requireNamespace("gprofiler2", quietly = TRUE)) stop("Instala 'gprofiler2' primero.")
+    message("Probe dictionary not found, querying g:Profiler: ", dict_file)
+    NULL
   }
+  queried <- list()
   
   out <- vector("list", length(de_list))
   names(out) <- names(de_list)
@@ -482,6 +494,13 @@ add_gene_symbol_with_gconvert_safe <- function(de_list,
       rownames(tt)
     }
     
+    if (!is.null(dict)) {
+      if (!all(ids %in% dict$probe)) stop("Probes of ", nm, " missing from ", dict_file)
+      tt$Gene.symbol <- dict$hgnc_symbol[match(ids, dict$probe)]
+      out[[nm]] <- tt
+      next
+    }
+
     # gconvert returns one row per query (NA in 'name' if no mapping)
     gc <- gprofiler2::gconvert(
       query      = ids,
@@ -508,9 +527,25 @@ add_gene_symbol_with_gconvert_safe <- function(de_list,
               ". Algo raro pasó con gconvert.")
     } else {
       tt$Gene.symbol <- gene_symbol
+      queried[[nm]] <- data.frame(probe = ids, hgnc_symbol = gene_symbol)
     }
     
     out[[nm]] <- tt
+  }
+
+  # Freeze what the server returned, so later runs do not depend on it
+  if (is.null(dict) && length(queried) > 0) {
+    new_dict <- unique(do.call(rbind, queried))
+    stopifnot(!anyDuplicated(new_dict$probe))
+    ver <- tryCatch(gprofiler2::get_version_info(organism = organism)$gprofiler_version,
+                    error = function(e) "unknown")
+    dir.create(dirname(dict_file), recursive = TRUE, showWarnings = FALSE)
+    con <- gzfile(dict_file, "w")
+    writeLines(c(paste0("# g:Profiler gconvert, organism ", organism, ", target HGNC, mthreshold 1; data version ", ver),
+                 paste0("# Created ", format(Sys.Date()), " by 2_DEG_GEO/GEO_multi_RRA.R"),
+                 paste0("# ", nrow(new_dict), " GPL570 probes; NA = no symbol returned")), con)
+    write.table(new_dict, con, sep = "\t", quote = FALSE, row.names = FALSE, na = "NA")
+    close(con)
   }
   
   out
@@ -859,23 +894,23 @@ contrast_specs <- list(
     case      = c("papillary serous ovarian adenocarcinoma"),
     control   = c("normal ovarian surface epithelium (OSE)")
   ),
+  # Cases are high-grade serous carcinoma (GSE27651 also has low-grade and
+  # borderline tumors) and epithelial components only (GSE38666 and GSE40595
+  # also have microdissected stroma); controls are ovarian surface epithelium.
   GSE27651 = list(
     group_col = "description",
-    case      = "leftover",
+    case      = c("high-grade ovarian serous carcinoma"),
     control   = c("normal human ovarian surface epithelials cells")
   ),
   GSE38666 = list(
-    group_col = "grade:ch1",
-    case      = "leftover",
-    control   = NA_character_
+    group_col = "tissue:ch1",
+    case      = c("Ovarian Cancer Epithelium"),
+    control   = c("Ovarian Surface Epithelium")
   ),
   GSE40595 = list(
     group_col = "source_name_ch1",
-    case      = "leftover",
-    control   = c(
-    	"Microdissected normal ovarian stroma",
-    	"Microdissected ovarian surface epthelium"
-  	)
+    case      = c("Microdissected ovarian tumor epthelial component"),
+    control   = c("Microdissected ovarian surface epthelium")
   ),
   GSE54388 = list(
     group_col = "diagnosis:ch1",

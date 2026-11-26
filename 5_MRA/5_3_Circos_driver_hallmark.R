@@ -150,9 +150,9 @@ MIN_DRIVERS_PER_TERM <- 1   # SECONDARY declutter knob (applied after the
 
 modules <- list(
   "G2/M & mitosis"            = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1"),
-  "DNA-damage checkpoint"     = c("CHEK1"),
-  "Chromatin / centromere"    = c("ACTL6A", "CENPA", "H2AZ1"),
-  "Transcription / RNA"       = c("TAF5", "SRSF2"),
+  "DNA-damage checkpoint"     = c("CHEK1", "TIMELESS"),
+  "Chromatin / centromere"    = c("ACTL6A", "CENPA", "H2AZ1", "DNMT1", "MIS18BP1"),
+  "Transcription / RNA"       = c("TAF5", "SRSF2", "ILF2", "TTF2"),
   "Survival / apoptosis"      = c("BIRC5"),
   "Underexplored"             = c("GMNN", "WDHD1", "CHAF1B")
 )

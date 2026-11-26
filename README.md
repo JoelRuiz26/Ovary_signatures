@@ -10,9 +10,9 @@ The workflow has three layers: (1) a consensus differential-expression signature
 
 ## Results in brief
 
-- Consensus signature: 646 genes significant in the three sources (419 up, 227 down; direction by agreement of at least two sources).
-- Master regulators: 2,385 regulons tested, 1,371 significant (BH-adjusted empirical p < 0.05); 188 above the elbow of the |NES| curve.
-- DepMap 24Q4, 58 ovarian epithelial tumor lines: 65 consensus genes with median gene effect ≤ −1; 54 regulators enriched in them (Fisher test against the consensus genes with dependency data); 16 candidate regulators that are themselves dependencies (median gene effect ≤ −0.5) and expressed in the same lines (median TPM ≥ 1): ACTL6A, AURKB, BIRC5, CCNA2, CDK1, CDK2, CENPA, CHAF1B, CHEK1, GMNN, H2AZ1, PLK1, PTTG1, SRSF2, TAF5, WDHD1.
+- Consensus signature: 698 genes significant in the three sources (382 up, 316 down; direction by agreement of at least two sources).
+- Master regulators: 2,436 regulons tested, 1,469 significant (BH-adjusted empirical p < 0.05); 227 above the elbow of the |NES| curve.
+- DepMap 24Q4, 58 ovarian epithelial tumor lines: 64 consensus genes with median gene effect ≤ −1; 69 regulators enriched in them (Fisher test against the consensus genes with dependency data); 21 candidate regulators that are themselves dependencies (median gene effect ≤ −0.5) and expressed in the same lines (median TPM ≥ 1): ACTL6A, AURKB, BIRC5, CCNA2, CDK1, CDK2, CENPA, CHAF1B, CHEK1, DNMT1, GMNN, H2AZ1, ILF2, MIS18BP1, PLK1, PTTG1, SRSF2, TAF5, TIMELESS, TTF2, WDHD1.
 
 ## Layout and paths
 
@@ -57,7 +57,7 @@ Other variables: `OCTAD_H5` (path to `octad.counts.and.tpm.h5`), `DEPMAP_DIR` (d
 | 14 | `7_Figures/7_1_…`, `7_2_…`, `7_3_…` | assembled manuscript figures (`7_3` reads the caches written by `7_2`) |
 | 15 | `8_Survival_analysis/8_0_Clinical_metadata.R` → `8_1_Cox_drivers_survival.R` | TCGA-OV clinical table, Cox models (`8_1` reads the caches written by `7_2`) |
 
-Step 8 reads the gene annotation from the dictionaries frozen in `5_MRA/annotation/` (Ensembl release 115; each file records release and date in its header), so it does not depend on the Ensembl servers; delete a dictionary to rebuild it with biomaRt. With these inputs `5_00` writes a matrix that is byte-identical to the one used for the network, and an ARACNe-AP bootstrap run with the same seed reproduces the corresponding bootstrap file of the original run. `aracneap.sh` must be run from `$OVARY_SIGNATURES/5_MRA`.
+In step 3 the GEO cases are high-grade serous carcinomas and tumor epithelium only, and the controls are ovarian surface epithelium (low-grade and borderline tumors and microdissected stroma are left out). The probe-to-symbol mapping is read from `2_DEG_GEO/annotation/` (frozen from g:Profiler; version and date in the file header). Step 8 reads the gene annotation from the dictionaries frozen in `5_MRA/annotation/` (Ensembl release 115; each file records release and date in its header), so it does not depend on the Ensembl servers; delete a dictionary to rebuild it with biomaRt. With these inputs `5_00` writes a matrix that is byte-identical to the one used for the network, and an ARACNe-AP bootstrap run with the same seed reproduces the corresponding bootstrap file of the original run. `aracneap.sh` must be run from `$OVARY_SIGNATURES/5_MRA`.
 
 Steps 9 and 10 are the expensive ones: the network takes about 6.5 h with 50 threads, and 10,000 permutations of msVIPER take a few minutes per signature with 55 workers. The permutation null of `5_0` uses one seed per permutation, so the result does not depend on the number of workers.
 
