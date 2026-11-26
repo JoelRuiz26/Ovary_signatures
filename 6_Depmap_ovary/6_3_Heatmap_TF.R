@@ -28,11 +28,11 @@ options(stringsAsFactors = FALSE)
 # Names of all TFs in regulons
 Top_MR_DepMap <- readRDS(paste0(BASE, "/6_Depmap_ovary/6_2_1_regulons_sig_filtered.rds"))
 Top_MR_DepMap <- names(Top_MR_DepMap)
-length(Top_MR_DepMap) #46
+length(Top_MR_DepMap) #54
 
 
 MR_DGE <- readRDS(file = paste0(BASE, "/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds"))
-length(MR_DGE) #23
+length(MR_DGE) #21
 # 
 MR_DGE <- toupper(MR_DGE)
 

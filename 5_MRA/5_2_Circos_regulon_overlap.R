@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # =============================================================================
 # 5_2_Circos_regulon_overlap.R
-# Circos plot: regulon (target-gene) overlap among the 17 prioritized
+# Circos plot: regulon (target-gene) overlap among the prioritized
 # transcriptional drivers of ovarian cancer.
 #
 # Companion figure for Figure 3 (MRA NES vs signature score scatter,
@@ -13,12 +13,12 @@
 #   1. Load the final ARACNe-AP consolidated network (Regulator/Target/MI),
 #      the same file consumed by 5_0_ovary_mra.R.
 #   2. Load core_mra.tsv (output of 5_0_ovary_mra.R) to get NES/direction
-#      for each of the 17 drivers.
+#      for each of the candidate drivers.
 #   3. Extract each driver's regulon (its ARACNe target-gene set).
 #   4. Compute pairwise overlap (shared targets + Jaccard index) between
-#      the 17 regulons.
+#      the candidate regulons.
 #   5. Draw a Circos/CHORD diagram via circlize::chordDiagram(): sectors =
-#      the 17 drivers, grouped into the functional modules described in the
+#      the candidate drivers, grouped into the functional modules described in the
 #      Discussion and colored by module (chordDiagram's own "grid" track) +
 #      gene-symbol label. NES is still used to order drivers within a module
 #      (via core_mra.tsv) but is no longer drawn as its own color ring -- an
@@ -57,25 +57,6 @@
 # or from a terminal: cd 5_MRA && Rscript 5_2_Circos_regulon_overlap.R
 #
 # Needs: circlize, dplyr, tidyr, readr .
-# NOT executed/tested in the environment that authored this script (no R
-# available there) -- treat the first local run as a shakedown run and read
-# the console warnings before trusting the output figure.
-#
-# KNOWN OPEN QUESTIONS (flag for Joel/Daniel before treating this as final)
-#   - RESOLVED 2026-07-25: CHAF1B was tentatively grouped under
-#     "Chromatin/centromere" (CAF-1 histone chaperone framing, per the
-#     Discussion) in earlier drafts. Confirmed instead to belong with the
-#     "comparatively uncharacterized" drivers, alongside KCMF1/GMNN/WDHD1/ELOC
-#     (the Results-section framing) -- kept IDENTICAL to
-#     5_3_Circos_driver_hallmark.R on purpose, so both figures tell a
-#     consistent module story; if this ever needs to change again, change it
-#     in both files.
-#   - This script does NOT yet use DepMap/CRISPR dependency scores (Figure 4,
-#     from 6_Depmap_ovary/) to color or size nodes by essentiality. If Joel
-#     can share the per-gene median DepMap dependency table for the 17
-#     drivers (and ideally the full 101 HD-gene set), we can add a third
-#     track encoding that, tying Figures 3+4 together in one integrative
-#     panel. Natural home for that table would be 6_Depmap_ovary/.
 # =============================================================================
 
 ## ---- 0. Setup -------------------------------------------------------------
@@ -92,8 +73,8 @@ suppressPackageStartupMessages({
 })
 
 ## ---- 1. Paths & parameters -------------------------------------------------
-# Relative paths assume the working directory is 5_MRA/ (same convention
-# used by 5_0_ovary_mra.R and 5_1_Elbow_TF.R).
+# Inputs are read from the data root; the figures are written to the working
+# directory (run from $OVARY_SIGNATURES/5_MRA).
 
 BASE <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")  # project data root
 NETWORK_FILE   <- file.path(BASE, "5_MRA/cancer_ovary_network_300bt_p1e-8.txt")   # Regulator / Target / MI / pvalue
@@ -104,20 +85,10 @@ MIN_SHARED_TARGETS <- 3     # secondary floor: never draw a ribbon below this ma
                              # targets, regardless of Jaccard (guards against tiny regulons
                              # producing a spuriously high Jaccard from just 1-2 shared genes)
 MIN_JACCARD <- 0.15         # PRIMARY filter: only draw a ribbon if the Jaccard index of the
-                             # two regulons is >= this. Regulon sizes span ~20x among these 17
-                             # drivers (125 targets for BIRC5 vs 2579 for KCMF1), so filtering
-                             # on raw shared-target counts lets the largest regulons (KCMF1,
-                             # SRSF2, ELOC, ACTL6A) dominate the plot with links that are large
-                             # in absolute terms but tiny relative to regulon size (e.g.
-                             # SRSF2-KCMF1: 508 shared targets but Jaccard = 0.13). Jaccard
-                             # normalizes for regulon size and highlights genuinely coordinated
-                             # pairs -- with this cutoff the top links are almost all within the
-                             # G2/M & mitosis module (PLK1-CCNA2, CDK1-CCNA2, PLK1-CDK1, ...),
-                             # which matches the manuscript's Discussion narrative much better
-                             # than the previous count-based threshold (which passed 134/136
-                             # possible pairs -- essentially everything).
-                             # (raise/lower to declutter or reveal more links; try 0.20 for an
-                             # even sparser plot, ~19 links)
+                             # two regulons is >= this. Regulon sizes differ several-fold
+                             # among the candidates, so a threshold on raw shared-target
+                             # counts lets the largest regulons dominate the plot; Jaccard
+                             # normalizes for regulon size (raise to 0.20 for a sparser plot)
 
 ## ---- 2. The candidate drivers, grouped into functional modules ------------
 # (as described in Results 5.3 / Discussion of the manuscript)
@@ -138,6 +109,11 @@ driver_module <- as_tibble(stack(modules)) |>
 drivers <- driver_module$gene
 stopifnot(!anyDuplicated(drivers))
 
+# The modules must cover exactly the candidates selected by 6_3_Heatmap_TF.R
+cand <- read.delim(file.path(BASE, "6_Depmap_ovary/6_3_2_candidate_regulators.tsv"))
+stopifnot("modules out of sync with 6_3_2_candidate_regulators.tsv" =
+            setequal(drivers, cand$gene[cand$candidate]))
+
 module_colors <- c(
   "G2/M & mitosis"            = "#1B9E77",
   "DNA-damage checkpoint"     = "#D95F02",
@@ -147,15 +123,15 @@ module_colors <- c(
   "Underexplored"             = "#999999"
 )
 
-## ---- 3. Load MRA results (NES / direction) for the 17 drivers -------------
+## ---- 3. Load MRA results (NES / direction) for the candidate drivers -------------
 
 mra <- read_tsv(MRA_TABLE_FILE, show_col_types = FALSE)
 
-mra_17 <- mra %>%
+mra_drv <- mra %>%
   filter(TF %in% drivers) %>%
   select(gene = TF, NES, direction, signature_score)
 
-missing_from_mra <- setdiff(drivers, mra_17$gene)
+missing_from_mra <- setdiff(drivers, mra_drv$gene)
 if (length(missing_from_mra) > 0) {
   warning("These drivers were NOT found in ", MRA_TABLE_FILE, ": ",
           paste(missing_from_mra, collapse = ", "),
@@ -163,13 +139,13 @@ if (length(missing_from_mra) > 0) {
 }
 
 driver_info <- driver_module %>%
-  left_join(mra_17, by = "gene") %>%
+  left_join(mra_drv, by = "gene") %>%
   arrange(match(module, names(modules)), desc(NES))
 
 cat("\n=== Driver table (module, NES, direction) ===\n")
 print(driver_info, n = Inf)
 
-## ---- 4. Load ARACNe network and extract regulons for the 17 drivers ------
+## ---- 4. Load ARACNe network and extract regulons for the candidate drivers ------
 
 cat("\nReading network file (this is the big ~40MB file, may take a bit)...\n")
 net <- read_tsv(NETWORK_FILE, show_col_types = FALSE)
@@ -227,7 +203,7 @@ sector_order <- driver_info$gene
 sector_module <- setNames(driver_info$module, driver_info$gene)
 n_sectors     <- length(sector_order)
 
-# Square adjacency matrix, same 17 names on rows and columns -- chordDiagram()
+# Square adjacency matrix, same names on rows and columns -- chordDiagram()
 # merges same-named rows/cols into a single sector per driver, with sector
 # size = sum of that driver's row+column values. Only the upper triangle is
 # filled (each unordered pair appears once in `links`), value = 1 per edge so

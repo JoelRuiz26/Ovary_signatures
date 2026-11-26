@@ -358,7 +358,7 @@ fig_s2 <- ggplot(s2_curve, aes(x = n, y = rho, color = contrast)) +
 
 ggsave(file.path(OUT_DIR, "Figure_S2.pdf"), fig_s2, width = 7, height = 5)
 
-# Reported correlations (RRA of January 2026, 20,656 genes)
+# Reported correlations (RRA of 20,656 genes)
 # AE:   rho(genome-wide) = 0.319 (N = 14508) | rho(top 2000) = 0.588
 # GTEx: rho(genome-wide) = 0.350 (N = 14478) | rho(top 2000) = 0.658
 s1_s2_tbl <- s2_curve %>%
@@ -546,7 +546,7 @@ message("Signature: ", SIGNATURE_MODE, " | knee: ", KNEE_MODE,
 
 core_sel <- core_concordant %>% dplyr::slice_head(n = k)
 message("Unique genes in core signature: ", length(unique(core_sel$gene)))
-# Expected with the submitted settings (centered, submitted): 6551
+# Expected: 2633 (raw, none); 6551 with the submitted settings (centered, submitted)
 
 signature_core <- make_signature_from_core(core_sel)
 readr::write_tsv(core_sel, file.path(OUT_DIR, "signature_core.tsv"))
@@ -568,11 +568,13 @@ head(signature_core)
 # Network parameters: 300 bootstraps, MI p-value threshold = 1e-8
 network_file <- file.path(BASE, "5_MRA/cancer_ovary_network_300bt_p1e-8.txt")
 regulon_file <- file.path(BASE, "5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds")
-# The cached regulon is reused only if it is newer than the network
-if (file.exists(regulon_file) && file.mtime(regulon_file) > file.mtime(network_file)) {
+vst_file     <- file.path(BASE, "5_MRA/ov_tcga_vst.tsv")
+# The cached regulon is reused only if it is newer than the network and the matrix
+if (file.exists(regulon_file) &&
+    all(file.mtime(regulon_file) > file.mtime(c(network_file, vst_file)))) {
   regulon <- readRDS(regulon_file)
 } else {
-  eset_tbl <- vroom::vroom(file.path(BASE, "5_MRA/ov_tcga_vst.tsv"), show_col_types = FALSE)
+  eset_tbl <- vroom::vroom(vst_file, show_col_types = FALSE)
   eset <- eset_tbl %>%
     tibble::column_to_rownames(var = colnames(eset_tbl)[1]) %>%
     as.matrix()

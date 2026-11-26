@@ -24,17 +24,17 @@ options(stringsAsFactors = FALSE)
 # ============================================================
 ### Get universe of all regulons ###
 names_all_regulones <- vroom(paste0(BASE, "/5_MRA/core_mra.tsv"))
-names_all_regulones <- names_all_regulones %>% filter(padj_emp <= 0.05) #1174
+names_all_regulones <- names_all_regulones %>% filter(padj_emp <= 0.05) #1371
 
 all_regulones <- readRDS(paste0(BASE, "/5_MRA/cancer_ovary_regulon_300bt_p1e-8.rds"))
 regulons_filtered <- all_regulones[names(all_regulones) %in% names_all_regulones$TF]
-length(names(regulons_filtered)) #[1] 1174
+length(names(regulons_filtered)) #[1] 1371
 #saveRDS(names(regulons_filtered), file = paste0(BASE, "/6_Depmap_ovary/6_2_regulons_all.rds"))
 
 
 ## Get top regulons (from NES elbow analysis) ##
 regulons <- readRDS(paste0(BASE, "/5_MRA/5_0_Top_elbow_regulones.rds"))
-regulons_names <- names(regulons) #328
+regulons_names <- names(regulons) #188
 #saveRDS(regulons_names, file = paste0(BASE, "/6_Depmap_ovary/6_2_regulons_names_topNES.rds"))
 
 # Load DEG-dependency table
@@ -97,7 +97,7 @@ enrich_one <- function(reg_name, regulon, genes_interest, universe) {
 results <- imap_dfr(
   regulons_filtered,
   ~ enrich_one(.y, .x, genes_interest, all_genes))
-length(results$regulon) #1174
+length(results$regulon) #1371
 
 
 # ============================================================
@@ -112,7 +112,7 @@ results <- results %>%
   arrange(p_adj)
 # keep only top-NES regulons
 results <- results %>% filter(regulon %in% regulons_names)
-length(results$regulon) #[1] 328
+length(results$regulon) #[1] 188
 
 # ============================================================
 # 6) Filter significant regulons
@@ -121,11 +121,11 @@ length(results$regulon) #[1] 328
 results_sig <- results %>%
   filter(p_adj < 0.01, overlap >= 10)
 
-length(results_sig$regulon) # 46 with -1 and 0.01 most extrinsec
+length(results_sig$regulon) # 54 with -1 and 0.01
                             # 63  "  0.5  "  0.01 
 # Identify TFs that are also differentially expressed
 TF_DGE_DepMap <- results_sig %>% filter(regulon %in% df$gene) %>% pull(regulon)
-length(TF_DGE_DepMap) #23
+length(TF_DGE_DepMap) #21
 saveRDS(TF_DGE_DepMap, file = paste0(BASE, "/6_Depmap_ovary/6_2_0_names_TF_DEG_TopNES.rds"))
 
 # ============================================================

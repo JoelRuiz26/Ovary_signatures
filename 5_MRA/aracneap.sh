@@ -3,7 +3,8 @@ set -euo pipefail
 
 # ARACNe-AP network of TCGA-OV tumors: 300 bootstraps, MI p-value 1e-8.
 # Run from the folder that holds ov_tcga_vst.tsv and
-# modulators_all_tf_tfc_mirna.txt (both written by 5_00_expression_regulators.R).
+# modulators_all_tf_tfc_mirna.txt (both written by 5_00_expression_regulators.R),
+# i.e. $OVARY_SIGNATURES/5_MRA. ARACNE_THREADS sets the threads per bootstrap.
 ARACNE_JAR="${ARACNE_JAR:-aracne.jar}"   # https://github.com/califano-lab/ARACNe-AP
 THREADS="${ARACNE_THREADS:-50}"
 

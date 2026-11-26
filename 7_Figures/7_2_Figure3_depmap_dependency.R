@@ -7,7 +7,7 @@
 # Rebuilds the three panels from the objects already produced by
 # the analysis scripts and assembles them with patchwork:
 #
-#   A) Ranked mean dependency profile  <- 6_1_Heatmap_coregenes.R
+#   A) Ranked median dependency profile  <- 6_1_Heatmap_coregenes.R
 #   B) Master regulators enriched in
 #      highly dependent genes          <- 6_2_MR_Enriched.R
 #   C) Dependency heatmap of the
@@ -81,7 +81,7 @@ FIG_H     <- 17.5                    # inches
 
 # Two rows: the ranked profile and the enrichment share the top row,
 # and the heatmap takes the full width below so that the 58 cell
-# lines and the 46 regulators are printed at a readable size.
+# lines and the regulators are printed at a readable size.
 FIG_DESIGN <- "
 AAAABBB
 CCCCCCC
@@ -185,7 +185,7 @@ cat("[INFO] consensus genes with dependency data:", nrow(dep$core),
     "x", ncol(dep$core), "cell lines\n")
 
 # ============================================================
-# 2) PANEL A | Ranked mean dependency profile
+# 2) PANEL A | Ranked median dependency profile
 # ============================================================
 dep_summary <- as.data.frame(dep$core) %>%
   rownames_to_column("gene") %>%
@@ -333,7 +333,7 @@ if (file.exists(mra_cache) && all(file.mtime(mra_cache) > file.mtime(mra_inputs)
   rm(regulons); gc()
 }
 
-# Row labels were sized for 46 regulators; shrink them when there are more
+# Row labels are sized for up to 46 regulators; shrink them when there are more
 lab_scale <- min(1, 46 / nrow(mra$results))
 
 cat("[INFO] HD-genes (median <= ", DEP_STRONG, "): ", mra$n_hd,

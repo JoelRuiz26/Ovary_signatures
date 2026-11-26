@@ -2,7 +2,7 @@
 # =============================================================================
 # 5_3_Circos_driver_hallmark.R
 # Bipartite Circos plot: driver -> Hallmark (MSigDB) functional program, for
-# the 17 prioritized transcriptional drivers of ovarian cancer.
+# the prioritized transcriptional drivers of ovarian cancer.
 #
 # Companion / complementary figure to 5_2_Circos_regulon_overlap.R. That
 # script draws driver <-> driver regulon-overlap ribbons and, after switching
@@ -22,7 +22,7 @@
 # Overview:
 #   1. Load the final ARACNe-AP consolidated network (Regulator/Target/MI),
 #      the same file consumed by 5_0_ovary_mra.R and 5_2_Circos_regulon_overlap.R.
-#   2. Extract each of the 17 drivers' regulon (ARACNe target-gene set) --
+#   2. Extract each of the candidate drivers' regulon (ARACNe target-gene set) --
 #      identical logic to 5_2_Circos_regulon_overlap.R.
 #   3. Load the 50 Hallmark gene sets from MSigDB via msigdbr.
 #   4. Run clusterProfiler::enricher() per driver (regulon genes vs Hallmark
@@ -50,7 +50,7 @@
 #      encoding of -log10(padj) (more significant = more opaque). This
 #      combination was chosen over 5_2's raw-count trap on purpose: GeneRatio
 #      is a proportion of each driver's own regulon size, so it does not
-#      mechanically favor the two biggest regulons (KCMF1, SRSF2) the way a
+#      mechanically favor the biggest regulons the way a
 #      raw shared-gene count would.
 #   7. Save the figure as PDF (vector) and PNG (300 dpi), and print
 #      diagnostic tables to the console for a sanity check.
@@ -88,7 +88,7 @@
 #     histone chaperone framing, per the Discussion) in earlier drafts of
 #     this figure. Confirmed 2026-07-25: CHAF1B belongs with the
 #     "comparatively uncharacterized" drivers instead, alongside
-#     KCMF1/GMNN/WDHD1/ELOC (the Results-section framing). Kept IDENTICAL to
+#     GMNN/WDHD1 (the Results-section framing). Kept IDENTICAL to
 #     5_2_Circos_regulon_overlap.R on purpose, so both figures tell a
 #     consistent module story -- if this ever needs to change again, change
 #     it in both files.
@@ -122,8 +122,7 @@ PADJ_CUTOFF <- 0.05    # BH-adjusted p-value cutoff for a driver-term pair to
 TOP_N_PER_DRIVER <- 12 # PRIMARY declutter knob: keep at most this many
                         # Hallmark terms per driver (ranked by padj), among
                         # those passing PADJ_CUTOFF. No driver has more than
-                        # 12 significant terms (KCMF1's 12 is the max across
-                        # all 17; verified interactively), so 12 = "keep every
+                        # 12 significant terms, so 12 = "keep every
                         # significant term for every driver" -- i.e. this cap
                         # is effectively OFF and MIN_DRIVERS_PER_TERM below is
                         # the only active declutter knob. At this setting all
@@ -164,6 +163,11 @@ driver_module <- as_tibble(stack(modules)) |>
 
 drivers <- driver_module$gene
 stopifnot(!anyDuplicated(drivers))
+
+# The modules must cover exactly the candidates selected by 6_3_Heatmap_TF.R
+cand <- read.delim(file.path(BASE, "6_Depmap_ovary/6_3_2_candidate_regulators.tsv"))
+stopifnot("modules out of sync with 6_3_2_candidate_regulators.tsv" =
+            setequal(drivers, cand$gene[cand$candidate]))
 
 module_colors <- c(
   "G2/M & mitosis"            = "#1B9E77",
@@ -373,7 +377,7 @@ links$mlog10padj <- -log10(links$p.adjust)
 # sected with the universe -- that falls in that Hallmark term). Chosen over
 # a raw shared-gene count (or an unweighted per-term/per-driver count) on
 # purpose: both alternatives were tried and both mechanically favor the two
-# biggest regulons (KCMF1: 2579 targets, SRSF2: 1840) just because bigger
+# biggest regulons just because bigger
 # gene sets have more statistical power to rack up significant terms, not
 # because their regulation is more concentrated. GeneRatio is a proportion of
 # each driver's own regulon size, so it does not have that bias -- see
@@ -457,7 +461,7 @@ draw_circos <- function() {
   # needs is asin(character_width / radius), so a bigger radius should ask
   # for less angular room) -- even at an impractically tall label track
   # (0.45, dwarfing the diagram itself) the narrowest sectors still
-  # collided, while the wide ones got needlessly tiny. Given 17 drivers
+  # collided, while the wide ones got needlessly tiny. Given candidate drivers
   # whose sector widths span roughly a 3x range, there's no single radius or
   # font size where bending fits all of them and still reads well, so every
   # driver uses the same rigid radial style as the Hallmark terms instead --

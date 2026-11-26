@@ -75,7 +75,7 @@ if (file.exists(net_cache) && all(file.mtime(net_cache) > file.mtime(net_inputs)
     filter(gene %in% mra$results$regulon) %>%
     group_by(gene) %>%
     summarise(median_dep = median(dep, na.rm = TRUE), .groups = "drop") %>%
-filter(median_dep <= DEP_MR) %>%
+    filter(median_dep <= DEP_MR) %>%
     filter(gene %in% names(dep$expr_tpm)[dep$expr_tpm >= MIN_TPM]) %>%
     arrange(median_dep)
 

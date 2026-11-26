@@ -43,7 +43,7 @@ res <- octad::diffExp(
   source            = "octad.whole",
   file              = h5_path,
   normalize_samples = TRUE,   # OCTAD uses RUVg for DESeq2 normalization when TRUE
-  k                 = 2,      # como ya lo traías
+  k                 = 2,
   n_topGenes        = 15000,
   DE_method         = "DESeq2",
   annotate          = TRUE,

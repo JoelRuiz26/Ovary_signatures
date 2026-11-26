@@ -186,8 +186,10 @@ consensus_genes <- all_genes_tbl %>% filter(n_sources >= 2) %>% arrange(desc(n_s
 out_genes <- file.path(out_dir, "3_0_1_genes_concordant.tsv")
 write_tsv(consensus_genes, out_genes)
 
-print(consensus_genes %>% filter(n_sources == 3) %>% pull(gene) %>% length())
-#648
+# The tables have one row per gene symbol x Ensembl id (MEMO1 and PAK6 have
+# two ids each), so genes are counted with n_distinct()
+print(consensus_genes %>% filter(n_sources == 3) %>% pull(gene) %>% n_distinct())
+#646 genes (648 rows)
 
 
 # ===================== VENN: SIGNIFICANT GENES    ==================== #

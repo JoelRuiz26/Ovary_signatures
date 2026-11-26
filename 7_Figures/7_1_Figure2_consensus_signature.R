@@ -419,7 +419,8 @@ p_volcano <- ggplot(volcano_df, aes(log2FoldChange, neglog10)) +
 # ============================================================
 # 4) PANEL D | Heatmap of the consensus gene set (VST, Z-score)
 # ============================================================
-if (file.exists(vst_cache)) {
+vst_inputs <- path.expand(c(paths$dds_gtex, paths$all_genes))
+if (file.exists(vst_cache) && all(file.mtime(vst_cache) > file.mtime(vst_inputs))) {
   hm <- readRDS(vst_cache)
 } else {
   suppressPackageStartupMessages(library(DESeq2))

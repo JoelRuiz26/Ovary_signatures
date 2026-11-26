@@ -155,10 +155,13 @@ df_all_summary <- as.data.frame(mat) %>%
   arrange(median_dep) %>%
   mutate(rank = row_number())
 
-df_crisp_deg <- df_all_summary %>% left_join(DGE_list_shared , by = "gene") %>% 
+# one row per gene: the consensus table has one row per symbol x Ensembl id
+df_crisp_deg <- df_all_summary %>%
+  left_join(distinct(DGE_list_shared, gene, .keep_all = TRUE), by = "gene") %>% 
   dplyr::select(gene, median_dep,mean_log2FC,consensus_direction) %>% 
   mutate(direction = consensus_direction,
          median_log2FC = mean_log2FC) %>% dplyr::select(-consensus_direction, -mean_log2FC)
+stopifnot(!anyDuplicated(df_crisp_deg$gene))
 vroom_write(df_crisp_deg, paste0(OUT_DIR, "6_1_0_Dependency_DEG_core.tsv"))
 
 

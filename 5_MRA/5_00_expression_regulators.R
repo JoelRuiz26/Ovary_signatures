@@ -21,9 +21,9 @@
 #   modulators_all_tf_tfc_mirna.txt      regulators for ARACNe-AP
 #   onlyTFs.txt                          TFs with a known motif
 #
-# Gene annotation comes from Ensembl through biomaRt. The submitted analysis
-# used the release that was current in November 2025; set ENSEMBL_VERSION to
-# pin it. A different release changes a few gene symbols and biotypes.
+# Gene annotation comes from Ensembl through biomaRt, release 115 (the one
+# used for the network of the manuscript). ENSEMBL_VERSION selects another
+# release, which changes a few hundred gene symbols and biotypes.
 # =============================================================================
 
 suppressPackageStartupMessages({
@@ -39,7 +39,7 @@ BASE    <- Sys.getenv("OVARY_SIGNATURES", "~/Ovary_signatures")
 XENA    <- file.path(BASE, "data/xena")
 REG_DIR <- file.path(BASE, "data/regulators")
 OUT_DIR <- Sys.getenv("MRA_OUTDIR", file.path(BASE, "5_MRA"))
-ENSEMBL_VERSION <- Sys.getenv("ENSEMBL_VERSION", "")
+ENSEMBL_VERSION <- Sys.getenv("ENSEMBL_VERSION", "115")
 dir.create(OUT_DIR, recursive = TRUE, showWarnings = FALSE)
 
 Sys.setenv("VROOM_CONNECTION_SIZE" = 131072 * 40)
@@ -66,7 +66,8 @@ is_tcga_ov <- !is.na(pheno$study) & pheno$study == "TCGA" &
 is_gtex_ov <- !is.na(pheno$study) & pheno$study == "GTEX" &
   str_detect(tolower(coalesce(pheno$primary_site, "")), "ovary")
 
-keep_ids <- unique(c(pheno$sample[is_tcga_ov], pheno$sample[is_gtex_ov]))
+tcga_ids <- pheno$sample[is_tcga_ov]
+gtex_ids <- pheno$sample[is_gtex_ov]
 
 
 # -----------------------------------------------------------------------------
@@ -75,7 +76,9 @@ keep_ids <- unique(c(pheno$sample[is_tcga_ov], pheno$sample[is_gtex_ov]))
 
 counts_file <- file.path(XENA, "TcgaTargetGtex_gene_expected_count.gz")
 header   <- strsplit(readLines(counts_file, n = 1), "\t")[[1]]
-keep_ids <- keep_ids[keep_ids %in% header]
+# Samples in the order of the count file, tumors first: ARACNe-AP resamples
+# columns by position, so the column order is part of the analysis
+keep_ids <- c(header[header %in% tcga_ids], header[header %in% gtex_ids])
 counts   <- vroom(counts_file, col_select = all_of(c(header[1], keep_ids)),
                   show_col_types = FALSE)
 exprs_matrix <- as.matrix(counts[, -1])
@@ -162,12 +165,13 @@ tfcs  <- read.delim(file.path(REG_DIR, "Homo_sapiens_Cof.txt"))$Symbol
 tfs_e <- read.delim(file.path(REG_DIR, "Homo_sapiens_TF.txt"))$Ensembl
 tfs_map <- getBM(attributes = c("ensembl_gene_id", "hgnc_symbol"),
                  filters = "ensembl_gene_id", values = unique(tfs_e), mart = mart)
+tfs_map <- tfs_map[order(match(tfs_map$ensembl_gene_id, tfs_e), tfs_map$hgnc_symbol), ]
 tfs <- tfs_map$hgnc_symbol[tfs_map$hgnc_symbol != ""]
 
 regulators_all <- unique(c(tfs, tfcs, lambert_symbols, mirna_symbols))
 writeLines(regulators_all, file.path(OUT_DIR, "modulators_all_tf_tfc_mirna.txt"))
 message("Candidate regulators: ", length(regulators_all))
-# Expected: 4180 (4147 present in the expression matrix)
+# Expected: 4180 (4152 present in the expression matrix)
 
 
 # -----------------------------------------------------------------------------

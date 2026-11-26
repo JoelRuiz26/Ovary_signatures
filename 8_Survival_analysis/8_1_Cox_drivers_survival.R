@@ -74,6 +74,10 @@ read_rds_here <- function(p) readRDS(path.expand(p))
 # ============================================================
 dep <- read_rds_here(paths$dep_cache)
 mra <- read_rds_here(paths$mra_cache)
+# the enrichment cache of 7_2 must be newer than the regulator table it derives from
+mra_tsv <- path.expand(file.path(base_dir, "5_MRA/core_mra.tsv"))
+stopifnot("rerun 7_2: its enrichment cache is older than 5_MRA/core_mra.tsv" =
+            file.mtime(path.expand(paths$mra_cache)) > file.mtime(mra_tsv))
 stopifnot("rerun 7_2: the dependency cache has no expression data" = !is.null(dep$expr_tpm))
 
 drivers <- dep$crispr %>%
@@ -100,7 +104,7 @@ primary_ids <- metadata %>%
   pull(sample.id)
 
 # The annotation of the count matrix predates a few HGNC renames
-gene_aliases <- c(ELOC = "TCEB1", H2AZ1 = "H2AFZ", PHB1 = "PHB")
+gene_aliases <- c(H2AZ1 = "H2AFZ", PHB1 = "PHB")
 
 driver_lookup <- drivers %>%
   transmute(
