@@ -1155,12 +1155,12 @@ message("Correlación genome-wide — AE: ", round(rho_ae_full, 3),
 
 # --- Correlation in the subset of genes with strong RRA signal ---
 # Uses the same criterion as in the manuscript (top N by abs_rra_z)
-n_sub <- 2000  # ajusta al valor real que usaste
+n_sub <- 2000  # size of the high-confidence subset
 df_top <- df_full %>% arrange(desc(abs_rra_z)) %>% slice_head(n = n_sub)
 
 rho_ae_top   <- cor(df_top$rra_z, df_top$stat_ae,   method = "spearman")
 rho_gtex_top <- cor(df_top$rra_z, df_top$stat_gtex, method = "spearman")
-message("Correlación top-", n_sub, " RRA — AE: ", round(rho_ae_top, 3),
+message("Correlation top-", n_sub, " RRA - AE: ", round(rho_ae_top, 3),
         " | GTEx: ", round(rho_gtex_top, 3))
 
 # --- Null distribution by random subsampling (robustness check) ---
@@ -1183,7 +1183,7 @@ null_gtex <- null_cors["gtex", ]
 p_ae   <- mean(abs(null_ae)   >= abs(rho_ae_top))
 p_gtex <- mean(abs(null_gtex) >= abs(rho_gtex_top))
 
-message("p-valor empírico (submuestreo) — AE: ", p_ae, " | GTEx: ", p_gtex)
+message("Empirical p-value (random subsets) - AE: ", p_ae, " | GTEx: ", p_gtex)
 
 # --- Supplementary figure ---
 library(ggplot2)
@@ -1210,5 +1210,5 @@ p_joel <- ggplot(df_null, aes(x = rho)) +
   ) +
   theme_bw(base_size = 13)
 
-ggsave("FigS_submuestreo_control_Joel.png", p_joel, width = 9, height = 4, dpi = 300)
-ggsave("FigS_submuestreo_control_Joel.pdf", p_joel, width = 9, height = 4)
+ggsave("FigS_random_subset_control.png", p_joel, width = 9, height = 4, dpi = 300)
+ggsave("FigS_random_subset_control.pdf", p_joel, width = 9, height = 4)

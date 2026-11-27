@@ -12,11 +12,17 @@
 !**/*.sh
 !**/*.png
 !**/*.pdf
+!Snakefile
 
 # Small inputs and result tables kept under version control
 !5_MRA/modulators_all_tf_tfc_mirna.txt
 !5_MRA/onlyTFs.txt
 !5_MRA/S1_S2_concordance.tsv
+!9_Revision_analyses/9_7_0_HPA_genes.tsv
+
+# Frozen gene annotation (release and date in the header of each file)
+!2_DEG_GEO/annotation/*.tsv.gz
+!5_MRA/annotation/*.tsv.gz
 
 # R default graphics device output
 Rplots.pdf
