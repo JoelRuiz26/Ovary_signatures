@@ -297,13 +297,15 @@ if (file.exists(mra_cache) && all(file.mtime(mra_cache) > file.mtime(mra_inputs)
 
   # Background: consensus genes with dependency data that are regulon targets
   # (HD-genes can only come from the consensus signature)
+  # Symbols are upper case in the dependency table and not in the network:
+  # compare in upper case
   universe <- intersect(unique(dep_summary$gene),
-                        unique(unlist(lapply(regulons, function(x) names(x$tfmode)))))
+                        toupper(unique(unlist(lapply(regulons, function(x) names(x$tfmode))))))
   genes_hi <- intersect(genes_hi, universe)
 
   # One-sided Fisher exact test per regulon
   enrich_one <- function(reg_name, regulon) {
-    genes_reg <- intersect(names(regulon$tfmode), universe)
+    genes_reg <- intersect(toupper(names(regulon$tfmode)), universe)
     k <- length(intersect(genes_reg, genes_hi))
     M <- length(genes_reg)
     n <- length(genes_hi)

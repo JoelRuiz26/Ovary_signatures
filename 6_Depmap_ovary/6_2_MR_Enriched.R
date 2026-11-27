@@ -57,7 +57,9 @@ genes_interest <- unique(df_filtered$gene) #65
 
 # HD-genes can only come from the consensus signature, so the background of
 # the test is the consensus genes with dependency data that are regulon targets
-all_targets <- unique(unlist(lapply(regulons_filtered, function(x) names(x$tfmode))))
+# Gene symbols are upper case in the dependency table (C12ORF56) but not in the
+# network (C12orf56): compare in upper case
+all_targets <- toupper(unique(unlist(lapply(regulons_filtered, function(x) names(x$tfmode)))))
 all_genes <- intersect(unique(df$gene), all_targets)
 length(all_genes) #609
 
@@ -70,7 +72,7 @@ genes_interest <- intersect(genes_interest, all_genes)
 
 enrich_one <- function(reg_name, regulon, genes_interest, universe) {
   
-  genes_reg <- intersect(names(regulon$tfmode), universe)
+  genes_reg <- intersect(toupper(names(regulon$tfmode)), universe)
   
   k <- length(intersect(genes_reg, genes_interest))  # overlap
   M <- length(genes_reg)                            # regulon size
