@@ -882,15 +882,16 @@ df_vol <- core_mrs_processed[core_mrs_processed$isTF== TRUE,] %>%
     ),
     abs_NES = abs(NES),
     sig_fdr = padj_emp < fdr_cut,
+    # ASCII levels: non-ASCII factor levels do not match in a C locale
     group4  = dplyr::case_when(
-      sig_fdr & NES >=  nes_cut ~ "Activated (|NES|\u22652)",
-      sig_fdr & NES <= -nes_cut ~ "Repressed (|NES|\u22652)",
-      sig_fdr                   ~ "Significant (|NES|<2)",
+      sig_fdr & NES >=  nes_cut ~ "Activated (NES >= 2)",
+      sig_fdr & NES <= -nes_cut ~ "Repressed (NES <= -2)",
+      sig_fdr                   ~ "Significant (|NES| < 2)",
       TRUE                      ~ "Not significant"
     ) %>% factor(levels = c(
-      "Activated (|NES|\u22652)",
-      "Repressed (|NES|\u22652)",
-      "Significant (|NES|<2)",
+      "Activated (NES >= 2)",
+      "Repressed (NES <= -2)",
+      "Significant (|NES| < 2)",
       "Not significant"
     ))
   )
@@ -918,11 +919,11 @@ p_mra <- ggplot(df_vol, aes(x = sig_x, y = abs_NES)) +
     max.overlaps  = Inf
   ) +
   scale_color_manual(values = c(
-    "Activated (|NES|\u22652)" = "red3",
-    "Repressed (|NES|\u22652)" = "dodgerblue3",
-    "Significant (|NES|<2)"    = "grey45",
-    "Not significant"          = "grey80"
-  )) +
+    "Activated (NES >= 2)"    = "red3",
+    "Repressed (NES <= -2)"   = "dodgerblue3",
+    "Significant (|NES| < 2)" = "grey45",
+    "Not significant"         = "grey80"
+  ), drop = FALSE) +
   scale_size_manual(values = c(`TRUE` = 2.2, `FALSE` = 1.1), guide = "none") +
   annotate(
     "text",
@@ -932,11 +933,6 @@ p_mra <- ggplot(df_vol, aes(x = sig_x, y = abs_NES)) +
     hjust = 0, vjust = 1, size = 3
   ) +
   labs(
-    title    = "Master Regulator Analysis: TF expression vs regulatory activity",
-    subtitle = sprintf(
-      "Color: strong (FDR<%.2g & |NES|\u2265%.1f) vs weak significant (FDR<%.2g & |NES|<%.1f). Labels: top %d per side (FDR<%.2g).",
-      fdr_cut, nes_cut, fdr_cut, nes_cut, label_n, fdr_cut
-    ),
     x     = "TF differential-expression score (signature_core)",
     y     = expression("|NES| (msVIPER)"),
     color = NULL

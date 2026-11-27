@@ -95,11 +95,10 @@ MIN_JACCARD <- 0.15         # PRIMARY filter: only draw a ribbon if the Jaccard 
 
 modules <- list(
   "G2/M & mitosis"            = c("PLK1", "CDK1", "AURKB", "CCNA2", "CDK2", "PTTG1"),
-  "DNA-damage checkpoint"     = c("CHEK1", "TIMELESS"),
+  "Replication & checkpoint"  = c("CHEK1", "TIMELESS", "WDHD1", "GMNN", "CHAF1B"),
   "Chromatin / centromere"    = c("ACTL6A", "CENPA", "H2AZ1", "DNMT1", "MIS18BP1"),
   "Transcription / RNA"       = c("TAF5", "SRSF2", "ILF2", "TTF2"),
-  "Survival / apoptosis"      = c("BIRC5"),
-  "Underexplored"             = c("GMNN", "WDHD1", "CHAF1B")
+  "Survival / apoptosis"      = c("BIRC5")
 )
 
 driver_module <- as_tibble(stack(modules)) |>
@@ -116,11 +115,10 @@ stopifnot("modules out of sync with 6_3_2_candidate_regulators.tsv" =
 
 module_colors <- c(
   "G2/M & mitosis"            = "#1B9E77",
-  "DNA-damage checkpoint"     = "#D95F02",
+  "Replication & checkpoint"  = "#D95F02",
   "Chromatin / centromere"    = "#7570B3",
   "Transcription / RNA"       = "#E7298A",
-  "Survival / apoptosis"      = "#66A61E",
-  "Underexplored"             = "#999999"
+  "Survival / apoptosis"      = "#66A61E"
 )
 
 ## ---- 3. Load MRA results (NES / direction) for the candidate drivers -------------

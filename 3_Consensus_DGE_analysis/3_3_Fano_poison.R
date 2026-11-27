@@ -1,5 +1,6 @@
 #!/usr/bin/env Rscript
 
+invisible(Sys.setlocale("LC_CTYPE", "C.UTF-8"))  # render Greek letters and minus signs correctly
 suppressPackageStartupMessages({
   library(dplyr)
   library(vroom)

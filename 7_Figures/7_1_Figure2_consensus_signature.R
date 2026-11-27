@@ -17,6 +17,7 @@
 # layout, sizes and typography are re-worked here.
 # ============================================================
 
+invisible(Sys.setlocale("LC_CTYPE", "C.UTF-8"))  # render Greek letters and minus signs correctly
 suppressPackageStartupMessages({
   library(dplyr)
   library(tibble)
@@ -491,7 +492,7 @@ ora_df <- read_tsv(path.expand(paths$ora), show_col_types = FALSE) %>%
     Ontology      = factor(Ontology, levels = c("BP", "MF", "CC")),
     GeneRatio_num = parse_ratio(GeneRatio),
     mlog10FDR     = -log10(p.adjust),
-    Description   = str_wrap(Description, width = 46)
+    Description   = str_trunc(Description, width = 58)  # one line per term; full names in the ORA table
   ) %>%
   arrange(Ontology, p.adjust) %>%
   mutate(Description = factor(Description, levels = rev(unique(Description))))
@@ -503,7 +504,7 @@ p_ora <- ggplot(ora_df, aes(x = GeneRatio_num, y = Description, fill = mlog10FDR
     limits = c(2, 10), breaks = c(2, 4, 6, 8, 10),
     oob = squish, name = expression(bold(-log[10]~"(FDR)"))
   ) +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.04))) +
+  scale_x_continuous(breaks = scales::breaks_pretty(n = 4), expand = expansion(mult = c(0, 0.04))) +
   facet_grid(Ontology ~ ., scales = "free_y", space = "free_y", switch = "y") +
   labs(x = "Gene ratio", y = NULL) +
   theme_panel() +
